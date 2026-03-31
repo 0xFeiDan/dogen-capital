@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { getSessionSecret } from "@/lib/auth/env";
 import { verifySessionToken } from "@/lib/auth/session";
 
 function isPublicAsset(pathname: string): boolean {
@@ -33,7 +34,7 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const isAuthenticated = await verifySessionToken(
     token,
-    process.env.AUTH_SESSION_SECRET
+    getSessionSecret()
   );
 
   if (isLoginRoute) {

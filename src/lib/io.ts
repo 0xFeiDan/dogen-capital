@@ -306,10 +306,14 @@ export function csvToTrades(text: string): ParseResult<Trade> {
       entryDate: get("entryDate") || get("entrydate") || new Date().toISOString().slice(0, 10),
       exitDate: get("exitDate") || get("exitdate") || undefined,
       entryPrice: parseFloat(get("entryPrice") || get("entryprice")) || 0,
-      exitPrice:
-        parseFloat(get("exitPrice") || get("exitprice")) || undefined,
-      currentPrice:
-        parseFloat(get("currentPrice") || get("currentprice")) || undefined,
+      exitPrice: (() => {
+        const v = parseFloat(get("exitPrice") || get("exitprice"));
+        return Number.isNaN(v) ? undefined : v;
+      })(),
+      currentPrice: (() => {
+        const v = parseFloat(get("currentPrice") || get("currentprice"));
+        return Number.isNaN(v) ? undefined : v;
+      })(),
       quantity: parseFloat(get("quantity")) || 0,
       fees: parseFloat(get("fees")) || 0,
       setupType: get("setupType") || get("setuptype") || undefined,
@@ -325,9 +329,9 @@ export function csvToTrades(text: string): ParseResult<Trade> {
     };
 
     // Clean up undefined optional fields
-    if (!trade.exitDate) delete trade.exitDate;
-    if (!trade.exitPrice) delete trade.exitPrice;
-    if (!trade.currentPrice) delete trade.currentPrice;
+    if (trade.exitDate == null) delete trade.exitDate;
+    if (trade.exitPrice == null) delete trade.exitPrice;
+    if (trade.currentPrice == null) delete trade.currentPrice;
     if (!trade.setupType) delete trade.setupType;
     if (!trade.name) delete trade.name;
     if (!trade.notes) delete trade.notes;

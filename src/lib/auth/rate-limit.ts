@@ -12,8 +12,26 @@ interface AttemptState {
 
 const attempts = new Map<string, AttemptState>();
 
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+let lastCleanup = Date.now();
+
+function purgeStaleEntries() {
+  const now = Date.now();
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+  lastCleanup = now;
+
+  for (const [key, state] of attempts) {
+    const windowExpired = now - state.windowStart > LOGIN_WINDOW_MS;
+    const blockExpired = state.blockedUntil <= now;
+    if (windowExpired && blockExpired) {
+      attempts.delete(key);
+    }
+  }
+}
+
 function getState(key: string): AttemptState {
   const now = Date.now();
+  purgeStaleEntries();
   const existing = attempts.get(key);
 
   if (!existing) {

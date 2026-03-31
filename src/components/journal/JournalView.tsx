@@ -64,20 +64,20 @@ function compareByField(a: Trade, b: Trade, field: SortField, dir: SortDir): num
 
 function sortTrades(trades: Trade[], field: SortField, dir: SortDir): Trade[] {
   return [...trades].sort((a, b) => {
+    // Always keep open trades above closed trades
     if (a.status !== b.status) {
       return a.status === "open" ? -1 : 1;
     }
 
-    if (a.status === "open" && b.status === "open") {
-      const openDateDiff = b.entryDate.localeCompare(a.entryDate);
-      if (openDateDiff !== 0) return openDateDiff;
-      return compareByField(a, b, field, dir);
+    // Within the same status group, sort by user-selected field first
+    const fieldDiff = compareByField(a, b, field, dir);
+    if (fieldDiff !== 0) return fieldDiff;
+
+    // Tie-breaker: newest first by date
+    if (a.status === "open") {
+      return b.entryDate.localeCompare(a.entryDate);
     }
-
-    const closedDateDiff = (b.exitDate ?? "").localeCompare(a.exitDate ?? "");
-    if (closedDateDiff !== 0) return closedDateDiff;
-
-    return compareByField(a, b, field, dir);
+    return (b.exitDate ?? "").localeCompare(a.exitDate ?? "");
   });
 }
 
@@ -138,7 +138,10 @@ function filterTrades(trades: Trade[], filters: JournalFilters): Trade[] {
     if (!matchesHoldingDuration(trade, filters.holdingDuration)) return false;
 
     if (filters.pnl !== "all") {
-      const pnl = computeTradePnL(trade);
+      let pnl = computeTradePnL(trade);
+      if (!pnl && trade.status === "open" && trade.currentPrice != null) {
+        pnl = computeUnrealisedPnL(trade, trade.currentPrice);
+      }
       if (filters.pnl === "win" && (!pnl || !pnl.isWin)) return false;
       if (filters.pnl === "loss" && (!pnl || pnl.isWin)) return false;
     }

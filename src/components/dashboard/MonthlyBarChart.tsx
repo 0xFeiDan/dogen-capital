@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -14,6 +15,33 @@ import {
 import { useMonthlyPnl } from "@/store/selectors";
 import { formatCurrency } from "@/lib/utils";
 import type { MonthlyPnl } from "@/types";
+
+function useChartColors() {
+  const [colors, setColors] = useState({
+    grid: "#2a2a2a",
+    tick: "#6b6b6b",
+    cursor: "#3a3a3a",
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    function update() {
+      setColors({
+        grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
+        tick: style.getPropertyValue("--chart-tick").trim() || "#6b6b6b",
+        cursor: style.getPropertyValue("--chart-cursor").trim() || "#3a3a3a",
+      });
+    }
+    update();
+
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return colors;
+}
 
 // ─── Tooltip ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +86,7 @@ function formatYAxis(v: number): string {
 
 export default function MonthlyBarChart() {
   const data = useMonthlyPnl();
+  const chartColors = useChartColors();
 
   if (data.length === 0) {
     return (
@@ -71,27 +100,27 @@ export default function MonthlyBarChart() {
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid
-          stroke="#2a2a2a"
+          stroke={chartColors.grid}
           strokeDasharray="3 3"
           vertical={false}
         />
 
         <XAxis
           dataKey="label"
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: chartColors.tick, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
         />
 
         <YAxis
           tickFormatter={formatYAxis}
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: chartColors.tick, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={48}
         />
 
-        <ReferenceLine y={0} stroke="#3a3a3a" strokeWidth={1} />
+        <ReferenceLine y={0} stroke={chartColors.cursor} strokeWidth={1} />
 
         <Tooltip
           content={<ChartTooltip />}

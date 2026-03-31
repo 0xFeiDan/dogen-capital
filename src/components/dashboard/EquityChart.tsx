@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -13,6 +14,35 @@ import {
 import { useEquityCurve } from "@/store/selectors";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { EquityPoint } from "@/types";
+
+function useChartColors() {
+  const [colors, setColors] = useState({
+    grid: "#2a2a2a",
+    tick: "#6b6b6b",
+    cursor: "#3a3a3a",
+    dotBg: "#111111",
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    function update() {
+      setColors({
+        grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
+        tick: style.getPropertyValue("--chart-tick").trim() || "#6b6b6b",
+        cursor: style.getPropertyValue("--chart-cursor").trim() || "#3a3a3a",
+        dotBg: style.getPropertyValue("--chart-dot-bg").trim() || "#111111",
+      });
+    }
+    update();
+
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return colors;
+}
 
 function ChartTooltip({
   active,
@@ -58,6 +88,7 @@ function formatXAxis(date: string): string {
 
 export default function EquityChart() {
   const data = useEquityCurve();
+  const chartColors = useChartColors();
 
   if (data.length === 0) {
     return (
@@ -87,7 +118,7 @@ export default function EquityChart() {
         </defs>
 
         <CartesianGrid
-          stroke="#2a2a2a"
+          stroke={chartColors.grid}
           strokeDasharray="3 3"
           vertical={false}
         />
@@ -95,7 +126,7 @@ export default function EquityChart() {
         <XAxis
           dataKey="date"
           tickFormatter={formatXAxis}
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: chartColors.tick, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           interval="preserveStartEnd"
@@ -103,7 +134,7 @@ export default function EquityChart() {
 
         <YAxis
           tickFormatter={formatYAxis}
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: chartColors.tick, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={48}
@@ -111,14 +142,14 @@ export default function EquityChart() {
 
         <ReferenceLine
           y={principalLine}
-          stroke="#3a3a3a"
+          stroke={chartColors.cursor}
           strokeDasharray="4 2"
           strokeWidth={1}
         />
 
         <Tooltip
           content={<ChartTooltip />}
-          cursor={{ stroke: "#3a3a3a", strokeWidth: 1 }}
+          cursor={{ stroke: chartColors.cursor, strokeWidth: 1 }}
         />
 
         <Area
@@ -131,7 +162,7 @@ export default function EquityChart() {
           activeDot={{
             r: 4,
             fill: lineColor,
-            stroke: "#111111",
+            stroke: chartColors.dotBg,
             strokeWidth: 2,
           }}
         />

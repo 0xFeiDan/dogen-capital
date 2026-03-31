@@ -29,6 +29,11 @@
 
     --accent: 191 136 74;
     --accent-dim: 157 108 52;
+
+    --chart-grid: #d6cab8;
+    --chart-tick: #8e7e65;
+    --chart-cursor: #c0b09a;
+    --chart-dot-bg: #fcf8f1;
   }
 
   .dark {
@@ -57,6 +62,11 @@
 
     --accent: 224 194 138;
     --accent-dim: 197 164 102;
+
+    --chart-grid: #2a2a2a;
+    --chart-tick: #6b6b6b;
+    --chart-cursor: #3a3a3a;
+    --chart-dot-bg: #111111;
   }
 
   * {
