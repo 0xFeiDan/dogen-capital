@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   const headerStore = await headers();
   const origin = headerStore.get("origin");
   const host = headerStore.get("host");
+  const forwardedProto = headerStore.get("x-forwarded-proto");
 
   if (origin && host) {
     const originHost = new URL(origin).host;
@@ -83,7 +84,9 @@ export async function POST(request: Request) {
 
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure:
+      forwardedProto === "https" ||
+      (!forwardedProto && new URL(request.url).protocol === "https:"),
     sameSite: "strict",
     path: "/",
     maxAge: getSessionTtlSeconds(),

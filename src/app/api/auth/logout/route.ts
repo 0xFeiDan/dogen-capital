@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
-export async function POST() {
+export async function POST(request: Request) {
   const cookieStore = await cookies();
+  const headerStore = await headers();
+  const forwardedProto = headerStore.get("x-forwarded-proto");
+
   cookieStore.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure:
+      forwardedProto === "https" ||
+      (!forwardedProto && new URL(request.url).protocol === "https:"),
     sameSite: "strict",
     path: "/",
     maxAge: 0,

@@ -52,8 +52,7 @@ export function LoginForm() {
         return;
       }
 
-      router.replace(redirectTo);
-      router.refresh();
+      window.location.href = redirectTo;
     } catch {
       setError("网络异常，请稍后重试");
       setSubmitting(false);
