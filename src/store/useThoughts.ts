@@ -1,12 +1,17 @@
+"use client";
+
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { Thought, ThoughtCategory } from "@/types";
 import { SEED_THOUGHTS } from "@/lib/seed";
+import type { AppUserId } from "./useAppUsers";
+import { useAppUsers } from "./useAppUsers";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type ThoughtsByUser = Record<AppUserId, Thought[]>;
 
 interface ThoughtsState {
   thoughts: Thought[];
+  thoughtsByUser: ThoughtsByUser;
   _hydrated: boolean;
 }
 
@@ -16,15 +21,20 @@ interface ThoughtsActions {
   deleteThought: (id: string) => void;
   importThoughts: (thoughts: Thought[]) => void;
   mergeThoughts: (thoughts: Thought[]) => void;
+  replaceAllThoughtsByUser: (thoughtsByUser: Partial<ThoughtsByUser>) => void;
   resetToSeed: () => void;
   getThoughtById: (id: string) => Thought | undefined;
   getThoughtsByCategory: (category: ThoughtCategory) => Thought[];
   setHydrated: () => void;
+  syncActiveUser: () => void;
 }
 
 export type ThoughtsStore = ThoughtsState & ThoughtsActions;
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+interface PersistedThoughtsState {
+  thoughtsByUser?: Partial<ThoughtsByUser>;
+  thoughts?: Thought[];
+}
 
 function makeId(): string {
   return `th_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -34,14 +44,64 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function cloneThoughts(thoughts: Thought[]): Thought[] {
+  return thoughts.map((thought) => ({
+    ...thought,
+    tags: [...thought.tags],
+  }));
+}
+
+function createDefaultThoughtsByUser(): ThoughtsByUser {
+  return {
+    me: cloneThoughts(SEED_THOUGHTS),
+    partner: [],
+  };
+}
+
+function normalizeThoughtsByUser(value?: Partial<ThoughtsByUser>): ThoughtsByUser {
+  const defaults = createDefaultThoughtsByUser();
+
+  return {
+    me: Array.isArray(value?.me) ? cloneThoughts(value.me) : defaults.me,
+    partner: Array.isArray(value?.partner) ? cloneThoughts(value.partner) : defaults.partner,
+  };
+}
+
+function getActiveUserId(): AppUserId {
+  return useAppUsers.getState().activeUserId;
+}
+
+function getCurrentUserThoughts(
+  thoughtsByUser: ThoughtsByUser,
+  userId = getActiveUserId()
+): Thought[] {
+  return thoughtsByUser[userId] ?? [];
+}
+
+function updateActiveUserThoughts(
+  state: ThoughtsState,
+  recipe: (thoughts: Thought[]) => Thought[]
+): Pick<ThoughtsState, "thoughts" | "thoughtsByUser"> {
+  const activeUserId = getActiveUserId();
+  const nextThoughts = recipe(getCurrentUserThoughts(state.thoughtsByUser, activeUserId));
+  const nextThoughtsByUser: ThoughtsByUser = {
+    ...state.thoughtsByUser,
+    [activeUserId]: nextThoughts,
+  };
+
+  return {
+    thoughts: nextThoughts,
+    thoughtsByUser: nextThoughtsByUser,
+  };
+}
+
 export const useThoughts = create<ThoughtsStore>()(
   persist(
     (set, get) => ({
-      // ── State ──────────────────────────────────────────────────────────────
-      thoughts: SEED_THOUGHTS,
+      thoughts: cloneThoughts(SEED_THOUGHTS),
+      thoughtsByUser: createDefaultThoughtsByUser(),
       _hydrated: false,
 
-      // ── Actions ────────────────────────────────────────────────────────────
       addThought(draft) {
         const now = nowIso();
         const thought: Thought = {
@@ -50,54 +110,109 @@ export const useThoughts = create<ThoughtsStore>()(
           createdAt: now,
           updatedAt: now,
         };
-        set((s) => ({ thoughts: [thought, ...s.thoughts] }));
+
+        set((state) => updateActiveUserThoughts(state, (thoughts) => [thought, ...thoughts]));
         return thought;
       },
 
       updateThought(id, updates) {
-        set((s) => ({
-          thoughts: s.thoughts.map((t) =>
-            t.id === id ? { ...t, ...updates, id, updatedAt: nowIso() } : t
-          ),
-        }));
+        set((state) =>
+          updateActiveUserThoughts(state, (thoughts) =>
+            thoughts.map((thought) =>
+              thought.id === id ? { ...thought, ...updates, id, updatedAt: nowIso() } : thought
+            )
+          )
+        );
       },
 
       deleteThought(id) {
-        set((s) => ({ thoughts: s.thoughts.filter((t) => t.id !== id) }));
+        set((state) =>
+          updateActiveUserThoughts(state, (thoughts) => thoughts.filter((thought) => thought.id !== id))
+        );
       },
 
       importThoughts(thoughts) {
-        set({ thoughts });
+        set((state) => updateActiveUserThoughts(state, () => cloneThoughts(thoughts)));
       },
 
       mergeThoughts(incoming) {
-        const existingIds = new Set(get().thoughts.map((t) => t.id));
-        const novel = incoming.filter((t) => !existingIds.has(t.id));
-        set((s) => ({ thoughts: [...novel, ...s.thoughts] }));
+        set((state) =>
+          updateActiveUserThoughts(state, (thoughts) => {
+            const existingIds = new Set(thoughts.map((thought) => thought.id));
+            const novel = cloneThoughts(incoming).filter((thought) => !existingIds.has(thought.id));
+            return [...novel, ...thoughts];
+          })
+        );
+      },
+
+      replaceAllThoughtsByUser(thoughtsByUser) {
+        const normalized = normalizeThoughtsByUser(thoughtsByUser);
+        set({
+          thoughtsByUser: normalized,
+          thoughts: getCurrentUserThoughts(normalized),
+        });
       },
 
       resetToSeed() {
-        set({ thoughts: SEED_THOUGHTS });
+        set((state) => updateActiveUserThoughts(state, () => cloneThoughts(SEED_THOUGHTS)));
       },
 
       getThoughtById(id) {
-        return get().thoughts.find((t) => t.id === id);
+        return get().thoughts.find((thought) => thought.id === id);
       },
 
       getThoughtsByCategory(category) {
-        return get().thoughts.filter((t) => t.category === category);
+        return get().thoughts.filter((thought) => thought.category === category);
       },
 
       setHydrated() {
         set({ _hydrated: true });
       },
+
+      syncActiveUser() {
+        const { thoughtsByUser } = get();
+        set({
+          thoughts: getCurrentUserThoughts(thoughtsByUser),
+        });
+      },
     }),
     {
       name: "dogen-thoughts",
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        thoughtsByUser: state.thoughtsByUser,
+      }),
+      migrate: (persistedState) => {
+        const state = persistedState as PersistedThoughtsState | undefined;
+
+        if (state?.thoughtsByUser) {
+          return {
+            thoughtsByUser: normalizeThoughtsByUser(state.thoughtsByUser),
+          };
+        }
+
+        if (Array.isArray(state?.thoughts)) {
+          return {
+            thoughtsByUser: normalizeThoughtsByUser({
+              me: state.thoughts,
+              partner: [],
+            }),
+          };
+        }
+
+        return {
+          thoughtsByUser: createDefaultThoughtsByUser(),
+        };
+      },
       onRehydrateStorage: () => (state) => {
+        state?.syncActiveUser();
         state?.setHydrated();
       },
     }
   )
 );
+
+useAppUsers.subscribe(() => {
+  useThoughts.getState().syncActiveUser();
+});

@@ -1,46 +1,40 @@
+"use client";
+
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { Trade } from "@/types";
 import { SEED_TRADES } from "@/lib/seed";
+import type { AppUserId } from "./useAppUsers";
+import { useAppUsers } from "./useAppUsers";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type TradesByUser = Record<AppUserId, Trade[]>;
 
 interface TradesState {
   trades: Trade[];
+  tradesByUser: TradesByUser;
   _hydrated: boolean;
 }
 
 interface TradesActions {
-  /** Add a brand-new trade (id + timestamps auto-assigned) */
   addTrade: (draft: Omit<Trade, "id" | "createdAt" | "updatedAt">) => Trade;
-
-  /** Update an existing trade by id */
   updateTrade: (id: string, updates: Partial<Omit<Trade, "id" | "createdAt">>) => void;
-
-  /** Delete a single trade */
   deleteTrade: (id: string) => void;
-
-  /** Delete multiple trades */
   deleteTrades: (ids: string[]) => void;
-
-  /** Replace the entire trades array (used for CSV/JSON import) */
   importTrades: (trades: Trade[]) => void;
-
-  /** Merge imported trades – skip duplicates by id */
   mergeTrades: (trades: Trade[]) => void;
-
-  /** Reset to seed data */
+  replaceAllTradesByUser: (tradesByUser: Partial<TradesByUser>) => void;
   resetToSeed: () => void;
-
-  /** Lookup helper */
   getTradeById: (id: string) => Trade | undefined;
-
   setHydrated: () => void;
+  syncActiveUser: () => void;
 }
 
 export type TradesStore = TradesState & TradesActions;
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+interface PersistedTradesState {
+  tradesByUser?: Partial<TradesByUser>;
+  trades?: Trade[];
+}
 
 function makeId(): string {
   return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -50,14 +44,61 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function cloneTrades(trades: Trade[]): Trade[] {
+  return trades.map((trade) => ({
+    ...trade,
+    tags: [...trade.tags],
+  }));
+}
+
+function createDefaultTradesByUser(): TradesByUser {
+  return {
+    me: cloneTrades(SEED_TRADES),
+    partner: [],
+  };
+}
+
+function normalizeTradesByUser(value?: Partial<TradesByUser>): TradesByUser {
+  const defaults = createDefaultTradesByUser();
+
+  return {
+    me: Array.isArray(value?.me) ? cloneTrades(value.me) : defaults.me,
+    partner: Array.isArray(value?.partner) ? cloneTrades(value.partner) : defaults.partner,
+  };
+}
+
+function getActiveUserId(): AppUserId {
+  return useAppUsers.getState().activeUserId;
+}
+
+function getCurrentUserTrades(tradesByUser: TradesByUser, userId = getActiveUserId()): Trade[] {
+  return tradesByUser[userId] ?? [];
+}
+
+function updateActiveUserTrades(
+  state: TradesState,
+  recipe: (trades: Trade[]) => Trade[]
+): Pick<TradesState, "trades" | "tradesByUser"> {
+  const activeUserId = getActiveUserId();
+  const nextTrades = recipe(getCurrentUserTrades(state.tradesByUser, activeUserId));
+  const nextTradesByUser: TradesByUser = {
+    ...state.tradesByUser,
+    [activeUserId]: nextTrades,
+  };
+
+  return {
+    trades: nextTrades,
+    tradesByUser: nextTradesByUser,
+  };
+}
+
 export const useTrades = create<TradesStore>()(
   persist(
     (set, get) => ({
-      // ── State ───────────────────────────────────────────���──────────────────
-      trades: SEED_TRADES,
+      trades: cloneTrades(SEED_TRADES),
+      tradesByUser: createDefaultTradesByUser(),
       _hydrated: false,
 
-      // ── Actions ────────────────────────────────────────────────────────────
       addTrade(draft) {
         const now = nowIso();
         const trade: Trade = {
@@ -66,55 +107,110 @@ export const useTrades = create<TradesStore>()(
           createdAt: now,
           updatedAt: now,
         };
-        set((s) => ({ trades: [trade, ...s.trades] }));
+
+        set((state) => updateActiveUserTrades(state, (trades) => [trade, ...trades]));
         return trade;
       },
 
       updateTrade(id, updates) {
-        set((s) => ({
-          trades: s.trades.map((t) =>
-            t.id === id ? { ...t, ...updates, id, updatedAt: nowIso() } : t
-          ),
-        }));
+        set((state) =>
+          updateActiveUserTrades(state, (trades) =>
+            trades.map((trade) =>
+              trade.id === id ? { ...trade, ...updates, id, updatedAt: nowIso() } : trade
+            )
+          )
+        );
       },
 
       deleteTrade(id) {
-        set((s) => ({ trades: s.trades.filter((t) => t.id !== id) }));
+        set((state) => updateActiveUserTrades(state, (trades) => trades.filter((trade) => trade.id !== id)));
       },
 
       deleteTrades(ids) {
-        const set_ = new Set(ids);
-        set((s) => ({ trades: s.trades.filter((t) => !set_.has(t.id)) }));
+        const idSet = new Set(ids);
+        set((state) =>
+          updateActiveUserTrades(state, (trades) => trades.filter((trade) => !idSet.has(trade.id)))
+        );
       },
 
       importTrades(trades) {
-        set({ trades });
+        set((state) => updateActiveUserTrades(state, () => cloneTrades(trades)));
       },
 
       mergeTrades(incoming) {
-        const existingIds = new Set(get().trades.map((t) => t.id));
-        const novel = incoming.filter((t) => !existingIds.has(t.id));
-        set((s) => ({ trades: [...novel, ...s.trades] }));
+        set((state) =>
+          updateActiveUserTrades(state, (trades) => {
+            const existingIds = new Set(trades.map((trade) => trade.id));
+            const novel = cloneTrades(incoming).filter((trade) => !existingIds.has(trade.id));
+            return [...novel, ...trades];
+          })
+        );
+      },
+
+      replaceAllTradesByUser(tradesByUser) {
+        const normalized = normalizeTradesByUser(tradesByUser);
+        set({
+          tradesByUser: normalized,
+          trades: getCurrentUserTrades(normalized),
+        });
       },
 
       resetToSeed() {
-        set({ trades: SEED_TRADES });
+        set((state) => updateActiveUserTrades(state, () => cloneTrades(SEED_TRADES)));
       },
 
       getTradeById(id) {
-        return get().trades.find((t) => t.id === id);
+        return get().trades.find((trade) => trade.id === id);
       },
 
       setHydrated() {
         set({ _hydrated: true });
       },
+
+      syncActiveUser() {
+        const { tradesByUser } = get();
+        set({
+          trades: getCurrentUserTrades(tradesByUser),
+        });
+      },
     }),
     {
       name: "dogen-trades",
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        tradesByUser: state.tradesByUser,
+      }),
+      migrate: (persistedState) => {
+        const state = persistedState as PersistedTradesState | undefined;
+
+        if (state?.tradesByUser) {
+          return {
+            tradesByUser: normalizeTradesByUser(state.tradesByUser),
+          };
+        }
+
+        if (Array.isArray(state?.trades)) {
+          return {
+            tradesByUser: normalizeTradesByUser({
+              me: state.trades,
+              partner: [],
+            }),
+          };
+        }
+
+        return {
+          tradesByUser: createDefaultTradesByUser(),
+        };
+      },
       onRehydrateStorage: () => (state) => {
+        state?.syncActiveUser();
         state?.setHydrated();
       },
     }
   )
 );
+
+useAppUsers.subscribe(() => {
+  useTrades.getState().syncActiveUser();
+});

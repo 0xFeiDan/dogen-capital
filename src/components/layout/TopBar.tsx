@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Database, LogOut, Menu, Moon, Sun } from "lucide-react";
+import { Database, LogOut, Menu, Moon, Sun, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { APP_USERS, useAppUsers } from "@/store/useAppUsers";
 import { DataModal } from "./DataModal";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -21,6 +22,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const activeUserId = useAppUsers((state) => state.activeUserId);
+  const setActiveUser = useAppUsers((state) => state.setActiveUser);
   const [mounted, setMounted] = useState(false);
   const [dataModalOpen, setDataModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -47,56 +50,69 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
   return (
     <>
-      <header className="h-14 flex items-center justify-between px-4 lg:px-5 border-b border-border bg-surface-1/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-surface-1/85 px-4 backdrop-blur-md lg:px-5">
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
-            className="lg:hidden p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors"
-            aria-label="Open menu"
+            className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary lg:hidden"
+            aria-label="打开菜单"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="h-5 w-5" />
           </button>
           <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/80 px-2.5 py-1.5">
+            <Users className="h-3.5 w-3.5 text-text-muted" />
+            <select
+              value={activeUserId}
+              onChange={(event) => setActiveUser(event.target.value as (typeof APP_USERS)[number]["id"])}
+              className="bg-transparent text-xs font-medium text-text-primary outline-none"
+              aria-label="切换用户"
+              title="切换用户"
+            >
+              {APP_USERS.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <button
             onClick={() => setDataModalOpen(true)}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
-              "text-text-muted hover:text-text-primary hover:bg-surface-3",
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary",
               !mounted && "pointer-events-none opacity-0"
             )}
-            aria-label="导入 / 导出本地数据"
-            title="导入 / 导出本地数据"
+            aria-label="导入或导出本地数据"
+            title="导入或导出本地数据"
           >
-            <Database className="w-3.5 h-3.5" />
+            <Database className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">本地数据</span>
           </button>
 
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className={cn(
-              "p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors",
+              "rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary",
               !mounted && "pointer-events-none opacity-0"
             )}
-            aria-label="Toggle theme"
+            aria-label="切换主题"
+            title="切换主题"
           >
-            {mounted && theme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
+            {mounted && theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
 
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:opacity-50"
             aria-label="退出登录"
             title="退出登录"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">退出</span>
           </button>
         </div>
