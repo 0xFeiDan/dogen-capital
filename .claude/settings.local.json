@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"/c/Users/Administrator/AppData/Local/JetBrains/acp-agents/.runtimes/node/24.13.0/bin:$PATH\")",
+      "Bash(npm run:*)",
+      "Bash(npm list:*)",
+      "Bash(npm install:*)",
+      "Bash(PATH=\"/c/Users/Administrator/AppData/Local/JetBrains/acp-agents/.runtimes/node/24.13.0/bin:$PATH\" npm run build)"
+    ]
+  }
+}

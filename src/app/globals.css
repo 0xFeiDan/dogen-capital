@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --surface: 244 239 230;
+    --surface-1: 252 248 241;
+    --surface-2: 243 235 223;
+    --surface-3: 233 223 208;
+    --surface-4: 220 208 189;
+
+    --border: 214 202 184;
+    --border-subtle: 231 222 208;
+    --border-strong: 188 172 150;
+
+    --text-primary: 58 47 35;
+    --text-secondary: 111 93 71;
+    --text-muted: 146 126 101;
+
+    --profit: 34 150 94;
+    --profit-dim: 24 128 77;
+    --profit-bg: 221 245 232;
+
+    --loss: 195 81 58;
+    --loss-dim: 168 63 43;
+    --loss-bg: 250 227 220;
+
+    --accent: 191 136 74;
+    --accent-dim: 157 108 52;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --surface: 22 27 34;
+    --surface-1: 31 37 46;
+    --surface-2: 41 48 59;
+    --surface-3: 53 61 73;
+    --surface-4: 67 76 90;
+
+    --border: 80 91 106;
+    --border-subtle: 60 70 83;
+    --border-strong: 115 128 145;
+
+    --text-primary: 238 234 227;
+    --text-secondary: 189 196 206;
+    --text-muted: 133 143 156;
+
+    --profit: 52 195 120;
+    --profit-dim: 33 163 93;
+    --profit-bg: 17 53 38;
+
+    --loss: 239 101 85;
+    --loss-dim: 220 74 58;
+    --loss-bg: 74 28 30;
+
+    --accent: 224 194 138;
+    --accent-dim: 197 164 102;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface text-text-primary;
+    background-image:
+      radial-gradient(circle at top left, rgba(191, 136, 74, 0.1), transparent 24%),
+      radial-gradient(circle at top right, rgba(96, 165, 250, 0.08), transparent 20%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent 28%);
+    min-height: 100vh;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at top left, rgba(232, 213, 163, 0.14), transparent 24%),
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 20%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 24%);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border-strong;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-accent/20 text-accent;
+  }
+}
+
+@layer utilities {
+  .text-2xs {
+    font-size: 0.625rem;
+    line-height: 1rem;
+  }
+}
