@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Brain, LayoutDashboard, TrendingUp, X } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  Brain,
+  LayoutDashboard,
+  TrendingUp,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -20,6 +27,11 @@ const NAV_ITEMS = [
     label: "思考笔记",
     href: "/thoughts",
     icon: Brain,
+  },
+  {
+    label: "统计分析",
+    href: "/analytics",
+    icon: BarChart3,
   },
 ] as const;
 
@@ -43,43 +55,41 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 h-full w-56 flex flex-col",
-          "bg-surface-1 border-r border-border",
+          "fixed left-0 top-0 z-40 flex h-full w-56 flex-col",
+          "border-r border-border bg-surface-1",
           "transition-transform duration-200 ease-in-out",
           open ? "translate-x-0" : "-translate-x-full",
-          "lg:translate-x-0 lg:static lg:z-auto"
+          "lg:static lg:z-auto lg:translate-x-0"
         )}
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b border-border shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-2.5 group" onClick={onClose}>
-            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-accent/10 border border-accent/20">
-              <TrendingUp className="w-4 h-4 text-accent" />
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+          <Link href="/dashboard" className="group flex items-center gap-2.5" onClick={onClose}>
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent/20 bg-accent/10">
+              <TrendingUp className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-text-primary tracking-tight leading-none">
+              <p className="leading-none tracking-tight text-sm font-semibold text-text-primary">
                 Dogen
               </p>
-              <p className="text-2xs text-text-muted tracking-widest uppercase">
-                Capital
-              </p>
+              <p className="text-2xs uppercase tracking-widest text-text-muted">Capital</p>
             </div>
           </Link>
 
           <button
             onClick={onClose}
-            className="lg:hidden p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors"
-            aria-label="Close menu"
+            className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary lg:hidden"
+            aria-label="关闭菜单"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-          <p className="px-2 mb-2 text-2xs font-semibold uppercase tracking-widest text-text-muted">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+          <p className="mb-2 px-2 text-2xs font-semibold uppercase tracking-widest text-text-muted">
             导航
           </p>
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + "/");
+            const active = pathname === href || pathname.startsWith(`${href}/`);
 
             return (
               <Link
@@ -87,19 +97,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 href={href}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150",
-                  "group relative",
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
                   active
                     ? "bg-surface-3 text-text-primary"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+                    : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
                 )}
               >
                 {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-accent rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-accent" />
                 )}
                 <Icon
                   className={cn(
-                    "w-4 h-4 shrink-0 transition-colors",
+                    "h-4 w-4 shrink-0 transition-colors",
                     active ? "text-accent" : "text-text-muted group-hover:text-text-secondary"
                   )}
                 />
@@ -109,10 +118,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           })}
         </nav>
 
-        <div className="px-4 py-4 border-t border-border shrink-0">
-          <p className="text-2xs text-text-muted">
-            &copy; {new Date().getFullYear()} Dogen Capital
-          </p>
+        <div className="shrink-0 border-t border-border px-4 py-4">
+          <p className="text-2xs text-text-muted">&copy; {new Date().getFullYear()} Dogen Capital</p>
         </div>
       </aside>
     </>

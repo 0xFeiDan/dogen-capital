@@ -17,6 +17,7 @@ interface ThoughtsState {
 
 interface ThoughtsActions {
   addThought: (draft: Omit<Thought, "id" | "createdAt" | "updatedAt">) => Thought;
+  upsertThought: (thought: Thought) => void;
   updateThought: (id: string, updates: Partial<Omit<Thought, "id" | "createdAt">>) => void;
   deleteThought: (id: string) => void;
   importThoughts: (thoughts: Thought[]) => void;
@@ -53,7 +54,7 @@ function cloneThoughts(thoughts: Thought[]): Thought[] {
 
 function createDefaultThoughtsByUser(): ThoughtsByUser {
   return {
-    me: cloneThoughts(SEED_THOUGHTS),
+    me: [],
     partner: [],
   };
 }
@@ -98,7 +99,7 @@ function updateActiveUserThoughts(
 export const useThoughts = create<ThoughtsStore>()(
   persist(
     (set, get) => ({
-      thoughts: cloneThoughts(SEED_THOUGHTS),
+      thoughts: [],
       thoughtsByUser: createDefaultThoughtsByUser(),
       _hydrated: false,
 
@@ -113,6 +114,24 @@ export const useThoughts = create<ThoughtsStore>()(
 
         set((state) => updateActiveUserThoughts(state, (thoughts) => [thought, ...thoughts]));
         return thought;
+      },
+
+      upsertThought(thought) {
+        set((state) =>
+          updateActiveUserThoughts(state, (thoughts) => {
+            const existingIndex = thoughts.findIndex((item) => item.id === thought.id);
+            if (existingIndex === -1) {
+              return [thought, ...thoughts];
+            }
+
+            const nextThoughts = [...thoughts];
+            nextThoughts[existingIndex] = {
+              ...thought,
+              tags: [...thought.tags],
+            };
+            return nextThoughts;
+          })
+        );
       },
 
       updateThought(id, updates) {

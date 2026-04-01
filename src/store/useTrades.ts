@@ -17,6 +17,7 @@ interface TradesState {
 
 interface TradesActions {
   addTrade: (draft: Omit<Trade, "id" | "createdAt" | "updatedAt">) => Trade;
+  upsertTrade: (trade: Trade) => void;
   updateTrade: (id: string, updates: Partial<Omit<Trade, "id" | "createdAt">>) => void;
   deleteTrade: (id: string) => void;
   deleteTrades: (ids: string[]) => void;
@@ -53,7 +54,7 @@ function cloneTrades(trades: Trade[]): Trade[] {
 
 function createDefaultTradesByUser(): TradesByUser {
   return {
-    me: cloneTrades(SEED_TRADES),
+    me: [],
     partner: [],
   };
 }
@@ -95,7 +96,7 @@ function updateActiveUserTrades(
 export const useTrades = create<TradesStore>()(
   persist(
     (set, get) => ({
-      trades: cloneTrades(SEED_TRADES),
+      trades: [],
       tradesByUser: createDefaultTradesByUser(),
       _hydrated: false,
 
@@ -110,6 +111,24 @@ export const useTrades = create<TradesStore>()(
 
         set((state) => updateActiveUserTrades(state, (trades) => [trade, ...trades]));
         return trade;
+      },
+
+      upsertTrade(trade) {
+        set((state) =>
+          updateActiveUserTrades(state, (trades) => {
+            const existingIndex = trades.findIndex((item) => item.id === trade.id);
+            if (existingIndex === -1) {
+              return [trade, ...trades];
+            }
+
+            const nextTrades = [...trades];
+            nextTrades[existingIndex] = {
+              ...trade,
+              tags: [...trade.tags],
+            };
+            return nextTrades;
+          })
+        );
       },
 
       updateTrade(id, updates) {

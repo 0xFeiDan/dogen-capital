@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "仪表盘",
   "/journal": "交易日志",
   "/thoughts": "思考笔记",
+  "/analytics": "统计分析",
 };
 
 interface TopBarProps {
@@ -67,7 +68,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             <Users className="h-3.5 w-3.5 text-text-muted" />
             <select
               value={activeUserId}
-              onChange={(event) => setActiveUser(event.target.value as (typeof APP_USERS)[number]["id"])}
+              onChange={(event) =>
+                setActiveUser(event.target.value as (typeof APP_USERS)[number]["id"])
+              }
               className="bg-transparent text-xs font-medium text-text-primary outline-none"
               aria-label="切换用户"
               title="切换用户"
@@ -86,11 +89,11 @@ export function TopBar({ onMenuClick }: TopBarProps) {
               "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary",
               !mounted && "pointer-events-none opacity-0"
             )}
-            aria-label="导入或导出本地数据"
-            title="导入或导出本地数据"
+            aria-label="导入或导出数据"
+            title="导入或导出数据"
           >
             <Database className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">本地数据</span>
+            <span className="hidden sm:inline">数据管理</span>
           </button>
 
           <button
@@ -102,7 +105,11 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             aria-label="切换主题"
             title="切换主题"
           >
-            {mounted && theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {mounted && theme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
           </button>
 
           <button

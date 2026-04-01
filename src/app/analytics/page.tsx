@@ -1,5 +1,8 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { AnalyticsView } from "@/components/analytics/AnalyticsView";
+
+export const metadata: Metadata = { title: "Analytics" };
 
 export default function AnalyticsPage() {
-  redirect("/dashboard");
+  return <AnalyticsView />;
 }

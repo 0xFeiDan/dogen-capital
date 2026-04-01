@@ -11,22 +11,26 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Card, CardTitle } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { updateInitialCapitalOnServer } from "@/lib/server-sync-client";
+import { formatCurrency, formatPercent } from "@/lib/utils";
+import { useAppUsers } from "@/store/useAppUsers";
 import { usePortfolioStats } from "@/store/selectors";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { StatCard } from "./StatCard";
-import { Card, CardTitle } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const EquityChart = dynamic(() => import("./EquityChart"), {
   ssr: false,
   loading: () => <ChartLoader />,
 });
+
 const MonthlyBarChart = dynamic(() => import("./MonthlyBarChart"), {
   ssr: false,
   loading: () => <ChartLoader />,
 });
+
 const AssetPieChart = dynamic(() => import("./AssetPieChart"), {
   ssr: false,
   loading: () => <ChartLoader />,
@@ -34,19 +38,21 @@ const AssetPieChart = dynamic(() => import("./AssetPieChart"), {
 
 function ChartLoader() {
   return (
-    <div className="flex items-center justify-center h-52">
-      <div className="h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+    <div className="flex h-52 items-center justify-center">
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
     </div>
   );
 }
 
 export function DashboardView() {
   const stats = usePortfolioStats();
+  const activeUserId = useAppUsers((state) => state.activeUserId);
   const initialCapital = usePortfolioSettings((state) => state.initialCapital);
   const setInitialCapital = usePortfolioSettings((state) => state.setInitialCapital);
   const [editingCapital, setEditingCapital] = useState(false);
   const [capitalInput, setCapitalInput] = useState(String(initialCapital));
   const [capitalError, setCapitalError] = useState("");
+  const [savingCapital, setSavingCapital] = useState(false);
 
   const pnlSign =
     stats.totalNetPnl > 0
@@ -65,7 +71,7 @@ export function DashboardView() {
     }
   }, [editingCapital, initialCapital]);
 
-  function handleSaveCapital() {
+  async function handleSaveCapital() {
     const nextValue = Number(capitalInput.replaceAll(",", "").trim());
 
     if (!Number.isFinite(nextValue) || nextValue <= 0) {
@@ -73,16 +79,25 @@ export function DashboardView() {
       return;
     }
 
-    setInitialCapital(nextValue);
-    setEditingCapital(false);
+    setSavingCapital(true);
+
+    try {
+      const setting = await updateInitialCapitalOnServer(activeUserId, nextValue);
+      setInitialCapital(setting.initialCapital);
+      setEditingCapital(false);
+    } catch (error) {
+      setCapitalError((error as Error).message);
+    } finally {
+      setSavingCapital(false);
+    }
   }
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <div className="relative rounded-xl bg-surface-1 border border-border p-5 shadow-card shadow-inner-sm overflow-hidden">
-          <div className="relative flex items-start justify-between mb-3 gap-3">
-            <p className="text-xs font-medium text-text-muted uppercase tracking-wider">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="relative overflow-hidden rounded-xl border border-border bg-surface-1 p-5 shadow-card shadow-inner-sm">
+          <div className="relative mb-3 flex items-start justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
               本金
             </p>
             <div className="flex items-center gap-2">
@@ -92,15 +107,17 @@ export function DashboardView() {
                     variant="profit"
                     size="xs"
                     onClick={handleSaveCapital}
-                    iconLeft={<Check className="w-3 h-3" />}
+                    disabled={savingCapital}
+                    iconLeft={<Check className="h-3 w-3" />}
                   >
-                    保存
+                    {savingCapital ? "保存中" : "保存"}
                   </Button>
                   <Button
                     variant="ghost"
                     size="xs"
                     onClick={() => setEditingCapital(false)}
-                    iconLeft={<X className="w-3 h-3" />}
+                    disabled={savingCapital}
+                    iconLeft={<X className="h-3 w-3" />}
                   >
                     取消
                   </Button>
@@ -110,18 +127,19 @@ export function DashboardView() {
                   variant="ghost"
                   size="xs"
                   onClick={() => setEditingCapital(true)}
-                  iconLeft={<PencilLine className="w-3 h-3" />}
+                  iconLeft={<PencilLine className="h-3 w-3" />}
                 >
                   修改
                 </Button>
               )}
-              <div className="p-1.5 rounded-lg bg-surface-3 text-accent">
-                <Wallet className="w-3.5 h-3.5" />
+
+              <div className="rounded-lg bg-surface-3 p-1.5 text-accent">
+                <Wallet className="h-3.5 w-3.5" />
               </div>
             </div>
           </div>
 
-          <p className="relative text-2xl font-semibold text-text-primary tabular-nums tracking-tight leading-none">
+          <p className="relative text-2xl font-semibold leading-none tracking-tight text-text-primary tabular-nums">
             {formatCurrency(initialCapital, "USD", true)}
           </p>
 
@@ -132,7 +150,9 @@ export function DashboardView() {
                 value={capitalInput}
                 onChange={(event) => {
                   setCapitalInput(event.target.value);
-                  if (capitalError) setCapitalError("");
+                  if (capitalError) {
+                    setCapitalError("");
+                  }
                 }}
                 placeholder="输入本金"
                 inputMode="decimal"
@@ -140,10 +160,8 @@ export function DashboardView() {
               />
             </div>
           ) : (
-            <div className="relative flex items-center gap-2 mt-2">
-              <span className="text-xs text-text-muted truncate">
-                可随时自定义或修改
-              </span>
+            <div className="relative mt-2 flex items-center gap-2">
+              <span className="truncate text-xs text-text-muted">可随时自定义或修改</span>
             </div>
           )}
         </div>
@@ -184,13 +202,11 @@ export function DashboardView() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card noPadding className="lg:col-span-2">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <CardTitle>净值曲线</CardTitle>
-            <span className="text-xs text-text-muted tabular-nums">
-              本金 + 累计净盈亏
-            </span>
+            <span className="text-xs text-text-muted tabular-nums">本金 + 累计净盈亏</span>
           </div>
           <div className="px-2 py-4">
             <EquityChart />
@@ -198,7 +214,7 @@ export function DashboardView() {
         </Card>
 
         <Card noPadding>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <CardTitle>资产分布</CardTitle>
             <span className="text-xs text-text-muted tabular-nums">
               当前持仓 + 现金 / 本位
@@ -211,7 +227,7 @@ export function DashboardView() {
       </div>
 
       <Card noPadding>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <CardTitle>月度盈亏</CardTitle>
           <span className="text-xs text-text-muted tabular-nums">
             已平仓净盈亏，按出场月份

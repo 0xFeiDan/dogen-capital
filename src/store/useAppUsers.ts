@@ -2,18 +2,10 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { APP_USERS, type AppUserId } from "@/lib/users";
 
-export type AppUserId = "me" | "partner";
-
-export interface AppUserProfile {
-  id: AppUserId;
-  name: string;
-}
-
-export const APP_USERS: AppUserProfile[] = [
-  { id: "me", name: "我" },
-  { id: "partner", name: "女朋友" },
-];
+export { APP_USERS };
+export type { AppUserId } from "@/lib/users";
 
 interface AppUsersState {
   activeUserId: AppUserId;

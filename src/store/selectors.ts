@@ -218,11 +218,10 @@ export function computePortfolioAllocation(
     other: "其他",
   };
 
-  let openCostBasis = 0;
+  let cashValue = initialCapital + realisedPnl;
 
   for (const trade of openTrades) {
     const marketValue = (trade.currentPrice ?? trade.entryPrice) * trade.quantity;
-    const costBasis = trade.entryPrice * trade.quantity;
     const existing = allocationMap.get(trade.assetClass) ?? {
       label: assetLabels[trade.assetClass],
       value: 0,
@@ -231,14 +230,16 @@ export function computePortfolioAllocation(
 
     allocationMap.set(trade.assetClass, {
       ...existing,
-      value: existing.value + marketValue,
+      value: existing.value + Math.abs(marketValue),
       count: existing.count + 1,
     });
 
-    openCostBasis += costBasis;
+    if (trade.direction === "long") {
+      cashValue -= trade.entryPrice * trade.quantity;
+    } else {
+      cashValue += trade.entryPrice * trade.quantity - Math.abs(marketValue);
+    }
   }
-
-  const cashValue = Math.max(initialCapital + realisedPnl - openCostBasis, 0);
 
   const rows: PortfolioAllocation[] = Array.from(allocationMap.entries()).map(
     ([assetClass, entry]) => ({
@@ -253,7 +254,7 @@ export function computePortfolioAllocation(
   rows.push({
     key: "cash",
     label: "现金 / 本位",
-    value: Math.round(cashValue * 100) / 100,
+    value: Math.round(Math.max(cashValue, 0) * 100) / 100,
     percent: 0,
   });
 

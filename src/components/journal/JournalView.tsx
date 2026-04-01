@@ -5,6 +5,13 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
+import { deleteTradeFromServer } from "@/lib/server-sync-client";
+import { formatCurrency, getHoldingDurationMs } from "@/lib/utils";
+import { useAppUsers } from "@/store/useAppUsers";
+import { computeTradePnL, computeUnrealisedPnL } from "@/store/selectors";
+import { useTrades } from "@/store/useTrades";
+import type { Trade } from "@/types";
+import { TradeDrawer } from "./TradeDrawer";
 import {
   DEFAULT_FILTERS,
   TradeFilters,
@@ -12,11 +19,6 @@ import {
   type JournalFilters,
 } from "./TradeFilters";
 import { TradeTable } from "./TradeTable";
-import { TradeDrawer } from "./TradeDrawer";
-import { useTrades } from "@/store/useTrades";
-import { computeTradePnL, computeUnrealisedPnL } from "@/store/selectors";
-import { formatCurrency, getHoldingDurationMs } from "@/lib/utils";
-import type { Trade } from "@/types";
 import type { SortDir, SortField } from "./TradeTable";
 
 function getPnlNet(trade: Trade): number {
@@ -64,27 +66,22 @@ function compareByField(a: Trade, b: Trade, field: SortField, dir: SortDir): num
 
 function sortTrades(trades: Trade[], field: SortField, dir: SortDir): Trade[] {
   return [...trades].sort((a, b) => {
-    // Always keep open trades above closed trades
     if (a.status !== b.status) {
       return a.status === "open" ? -1 : 1;
     }
 
-    // Within the same status group, sort by user-selected field first
     const fieldDiff = compareByField(a, b, field, dir);
     if (fieldDiff !== 0) return fieldDiff;
 
-    // Tie-breaker: newest first by date
     if (a.status === "open") {
       return b.entryDate.localeCompare(a.entryDate);
     }
+
     return (b.exitDate ?? "").localeCompare(a.exitDate ?? "");
   });
 }
 
-function matchesHoldingDuration(
-  trade: Trade,
-  filter: HoldingDurationFilter
-): boolean {
+function matchesHoldingDuration(trade: Trade, filter: HoldingDurationFilter): boolean {
   if (filter === "all") return true;
 
   const durationMs = getHoldingDurationMs(trade.entryDate, trade.exitDate);
@@ -129,12 +126,8 @@ function filterTrades(trades: Trade[], filters: JournalFilters): Trade[] {
     }
 
     if (filters.status !== "all" && trade.status !== filters.status) return false;
-    if (filters.direction !== "all" && trade.direction !== filters.direction) {
-      return false;
-    }
-    if (filters.assetClass !== "all" && trade.assetClass !== filters.assetClass) {
-      return false;
-    }
+    if (filters.direction !== "all" && trade.direction !== filters.direction) return false;
+    if (filters.assetClass !== "all" && trade.assetClass !== filters.assetClass) return false;
     if (!matchesHoldingDuration(trade, filters.holdingDuration)) return false;
 
     if (filters.pnl !== "all") {
@@ -168,11 +161,11 @@ function SummaryBar({ trades }: { trades: Trade[] }) {
   if (trades.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-1 px-5 py-3 border-b border-border bg-surface-2/50">
+    <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-border bg-surface-2/50 px-5 py-3">
       <span className="text-xs text-text-muted">
-        <span className="text-text-secondary font-medium">{openTrades.length}</span>
+        <span className="font-medium text-text-secondary">{openTrades.length}</span>
         {" 持仓中 · "}
-        <span className="text-text-secondary font-medium">{closedTrades.length}</span>
+        <span className="font-medium text-text-secondary">{closedTrades.length}</span>
         {" 已平仓"}
       </span>
 
@@ -180,7 +173,7 @@ function SummaryBar({ trades }: { trades: Trade[] }) {
         <span className="text-xs text-text-muted">
           已实现盈亏:
           <span
-            className={`ml-1 font-medium tabular-nums ${
+            className={`ml-1 font-medium text-sm tabular-nums ${
               totalPnl >= 0 ? "text-profit" : "text-loss"
             }`}
           >
@@ -203,14 +196,17 @@ function SummaryBar({ trades }: { trades: Trade[] }) {
 }
 
 export function JournalView() {
-  const { trades, deleteTrade } = useTrades();
-
+  const activeUserId = useAppUsers((state) => state.activeUserId);
+  const trades = useTrades((state) => state.trades);
+  const removeTrade = useTrades((state) => state.deleteTrade);
   const [filters, setFilters] = useState<JournalFilters>(DEFAULT_FILTERS);
   const [sortField, setSortField] = useState<SortField>("exitDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Trade | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const filtered = useMemo(() => filterTrades(trades, filters), [trades, filters]);
   const sorted = useMemo(
@@ -243,10 +239,21 @@ export function JournalView() {
     setEditingTrade(null);
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     if (!deleteTarget) return;
-    deleteTrade(deleteTarget.id);
-    setDeleteTarget(null);
+
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      await deleteTradeFromServer(activeUserId, deleteTarget.id);
+      removeTrade(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError((err as Error).message || "删除失败，请稍后重试");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -263,9 +270,9 @@ export function JournalView() {
           <Button
             variant="primary"
             size="sm"
-            iconLeft={<Plus className="w-4 h-4" />}
+            iconLeft={<Plus className="h-4 w-4" />}
             onClick={handleNew}
-            className="shrink-0 mt-0.5"
+            className="mt-0.5 shrink-0"
           >
             新增交易
           </Button>
@@ -291,17 +298,25 @@ export function JournalView() {
       />
 
       <Dialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError("");
+        }}
         title="删除交易？"
         description={
           deleteTarget
-            ? `这会永久删除 ${deleteTarget.ticker} 的交易记录，且无法撤销。`
+            ? deleteError
+              ? `删除失败: ${deleteError}`
+              : `这会永久删除 ${deleteTarget.ticker} 的交易记录，且无法撤销。`
             : undefined
         }
         confirmLabel="删除"
         confirmVariant="danger"
-        onConfirm={handleConfirmDelete}
+        onConfirm={() => {
+          void handleConfirmDelete();
+        }}
+        loading={deleting}
       />
     </>
   );

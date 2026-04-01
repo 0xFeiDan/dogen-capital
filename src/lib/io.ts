@@ -22,6 +22,27 @@ export interface ParseResult<T> {
   errors: string[];
 }
 
+function parseFiniteNumber(value: unknown): number | null {
+  const num =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : null;
+
+  return num != null && Number.isFinite(num) ? num : null;
+}
+
+function parseOptionalFiniteNumber(value: unknown): number | undefined | null {
+  if (value == null || value === "") return undefined;
+  const num = parseFiniteNumber(value);
+  return num == null ? null : num;
+}
+
+function isIsoLikeDate(value: string): boolean {
+  return value.trim().length > 0 && !Number.isNaN(new Date(value).getTime());
+}
+
 // ─── Browser download ─────────────────────────────────────────────────────────
 
 export function triggerDownload(
@@ -291,6 +312,45 @@ export function csvToTrades(text: string): ParseResult<Trade> {
     const assetClassRaw = get("assetClass") || get("assetclass");
     const currencyRaw = get("currency");
 
+    const entryPrice = parseOptionalFiniteNumber(get("entryPrice") || get("entryprice"));
+    const exitPrice = parseOptionalFiniteNumber(get("exitPrice") || get("exitprice"));
+    const currentPrice = parseOptionalFiniteNumber(get("currentPrice") || get("currentprice"));
+    const quantity = parseOptionalFiniteNumber(get("quantity"));
+    const fees = parseOptionalFiniteNumber(get("fees"));
+    const entryDate = get("entryDate") || get("entrydate") || new Date().toISOString().slice(0, 10);
+    const exitDate = get("exitDate") || get("exitdate") || undefined;
+
+    if (entryPrice == null || entryPrice <= 0) {
+      errors.push(`Row ${r + 1} (${ticker}): invalid entryPrice - skipped`);
+      continue;
+    }
+    if (quantity == null || quantity <= 0) {
+      errors.push(`Row ${r + 1} (${ticker}): invalid quantity - skipped`);
+      continue;
+    }
+    if (fees == null || fees < 0) {
+      errors.push(`Row ${r + 1} (${ticker}): invalid fees - skipped`);
+      continue;
+    }
+    if (!isIsoLikeDate(entryDate)) {
+      errors.push(`Row ${r + 1} (${ticker}): invalid entryDate - skipped`);
+      continue;
+    }
+    if (status === "closed") {
+      if (!exitDate || !isIsoLikeDate(exitDate)) {
+        errors.push(`Row ${r + 1} (${ticker}): invalid exitDate - skipped`);
+        continue;
+      }
+      if (exitPrice == null || exitPrice <= 0) {
+        errors.push(`Row ${r + 1} (${ticker}): invalid exitPrice - skipped`);
+        continue;
+      }
+    }
+    if (status === "open" && currentPrice === null) {
+      errors.push(`Row ${r + 1} (${ticker}): invalid currentPrice - skipped`);
+      continue;
+    }
+
     const trade: Trade = {
       id: get("id") || `imp_${Date.now()}_${r}`,
       ticker,
@@ -303,19 +363,13 @@ export function csvToTrades(text: string): ParseResult<Trade> {
       currency: (CURRENCIES.includes(currencyRaw as Currency)
         ? currencyRaw
         : "USD") as Currency,
-      entryDate: get("entryDate") || get("entrydate") || new Date().toISOString().slice(0, 10),
-      exitDate: get("exitDate") || get("exitdate") || undefined,
-      entryPrice: parseFloat(get("entryPrice") || get("entryprice")) || 0,
-      exitPrice: (() => {
-        const v = parseFloat(get("exitPrice") || get("exitprice"));
-        return Number.isNaN(v) ? undefined : v;
-      })(),
-      currentPrice: (() => {
-        const v = parseFloat(get("currentPrice") || get("currentprice"));
-        return Number.isNaN(v) ? undefined : v;
-      })(),
-      quantity: parseFloat(get("quantity")) || 0,
-      fees: parseFloat(get("fees")) || 0,
+      entryDate,
+      exitDate,
+      entryPrice,
+      exitPrice: status === "closed" ? exitPrice ?? undefined : undefined,
+      currentPrice: status === "open" ? currentPrice ?? undefined : undefined,
+      quantity,
+      fees,
       setupType: get("setupType") || get("setuptype") || undefined,
       tags: (get("tags") || "")
         .split("|")
@@ -391,6 +445,64 @@ function validateTradeObject(
   const currencyRaw = String(o.currency ?? "USD");
   const tagsRaw = Array.isArray(o.tags) ? (o.tags as string[]) : [];
 
+  const entryPrice = parseFiniteNumber(o.entryPrice);
+  const quantity = parseFiniteNumber(o.quantity);
+  const fees = parseFiniteNumber(o.fees ?? 0);
+  const exitPrice = parseOptionalFiniteNumber(o.exitPrice);
+  const currentPrice = parseOptionalFiniteNumber(o.currentPrice);
+  const entryDate = String(o.entryDate ?? "");
+  const exitDate = o.exitDate ? String(o.exitDate) : undefined;
+
+  if (entryPrice == null || entryPrice <= 0) {
+    return {
+      trade: null,
+      error: `Item ${rowNum} (${ticker}): invalid entryPrice - skipped`,
+    };
+  }
+
+  if (quantity == null || quantity <= 0) {
+    return {
+      trade: null,
+      error: `Item ${rowNum} (${ticker}): invalid quantity - skipped`,
+    };
+  }
+
+  if (fees == null || fees < 0) {
+    return {
+      trade: null,
+      error: `Item ${rowNum} (${ticker}): invalid fees - skipped`,
+    };
+  }
+
+  if (!isIsoLikeDate(entryDate)) {
+    return {
+      trade: null,
+      error: `Item ${rowNum} (${ticker}): invalid entryDate - skipped`,
+    };
+  }
+
+  if (status === "closed") {
+    if (!exitDate || !isIsoLikeDate(exitDate)) {
+      return {
+        trade: null,
+        error: `Item ${rowNum} (${ticker}): invalid exitDate - skipped`,
+      };
+    }
+    if (exitPrice == null || exitPrice <= 0) {
+      return {
+        trade: null,
+        error: `Item ${rowNum} (${ticker}): invalid exitPrice - skipped`,
+      };
+    }
+  }
+
+  if (status === "open" && currentPrice === null) {
+    return {
+      trade: null,
+      error: `Item ${rowNum} (${ticker}): invalid currentPrice - skipped`,
+    };
+  }
+
   const trade: Trade = {
     id: String(o.id ?? `imp_${Date.now()}_${rowNum}`),
     ticker,
@@ -403,15 +515,13 @@ function validateTradeObject(
     currency: (CURRENCIES.includes(currencyRaw as Currency)
       ? currencyRaw
       : "USD") as Currency,
-    entryDate:
-      String(o.entryDate ?? new Date().toISOString().slice(0, 10)),
-    exitDate: o.exitDate ? String(o.exitDate) : undefined,
-    entryPrice: Number(o.entryPrice ?? 0),
-    exitPrice: o.exitPrice != null ? Number(o.exitPrice) : undefined,
-    currentPrice:
-      o.currentPrice != null ? Number(o.currentPrice) : undefined,
-    quantity: Number(o.quantity ?? 0),
-    fees: Number(o.fees ?? 0),
+    entryDate,
+    exitDate,
+    entryPrice,
+    exitPrice: status === "closed" ? exitPrice ?? undefined : undefined,
+    currentPrice: status === "open" ? currentPrice ?? undefined : undefined,
+    quantity,
+    fees,
     setupType: o.setupType ? String(o.setupType) : undefined,
     tags: tagsRaw.map(String),
     notes: o.notes ? String(o.notes) : undefined,

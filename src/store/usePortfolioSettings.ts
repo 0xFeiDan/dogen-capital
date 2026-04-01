@@ -16,12 +16,14 @@ type PortfolioSettingsByUser = Record<AppUserId, PortfolioSetting>;
 interface PortfolioSettingsState {
   initialCapital: number;
   settingsByUser: PortfolioSettingsByUser;
+  _hydrated: boolean;
 }
 
 interface PortfolioSettingsActions {
   setInitialCapital: (value: number) => void;
   replaceAllSettingsByUser: (settingsByUser: Partial<PortfolioSettingsByUser>) => void;
   syncActiveUser: () => void;
+  setHydrated: () => void;
 }
 
 export type PortfolioSettingsStore = PortfolioSettingsState & PortfolioSettingsActions;
@@ -75,6 +77,7 @@ export const usePortfolioSettings = create<PortfolioSettingsStore>()(
     (set, get) => ({
       initialCapital: DEFAULT_INITIAL_CAPITAL,
       settingsByUser: createDefaultSettingsByUser(),
+      _hydrated: false,
 
       setInitialCapital(value) {
         const activeUserId = getActiveUserId();
@@ -102,6 +105,10 @@ export const usePortfolioSettings = create<PortfolioSettingsStore>()(
         set({
           initialCapital: getCurrentInitialCapital(get().settingsByUser),
         });
+      },
+
+      setHydrated() {
+        set({ _hydrated: true });
       },
     }),
     {
@@ -134,6 +141,7 @@ export const usePortfolioSettings = create<PortfolioSettingsStore>()(
       },
       onRehydrateStorage: () => (state) => {
         state?.syncActiveUser();
+        state?.setHydrated();
       },
     }
   )

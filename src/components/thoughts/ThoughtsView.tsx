@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { Brain, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { deleteThoughtFromServer } from "@/lib/server-sync-client";
+import { useAppUsers } from "@/store/useAppUsers";
+import { useThoughts } from "@/store/useThoughts";
+import type { Thought } from "@/types";
 import { ThoughtCard } from "./ThoughtCard";
 import { ThoughtDrawer } from "./ThoughtDrawer";
 import { ThoughtFilters, DEFAULT_THOUGHT_FILTERS } from "./ThoughtFilters";
-import { useThoughts } from "@/store/useThoughts";
-import type { Thought } from "@/types";
 import type { ThoughtFiltersState, ThoughtSort } from "./ThoughtFilters";
 
 function applyFilters(thoughts: Thought[], filters: ThoughtFiltersState): Thought[] {
@@ -16,12 +18,11 @@ function applyFilters(thoughts: Thought[], filters: ThoughtFiltersState): Though
 
   return thoughts.filter((thought) => {
     if (!filters.showPrivate && thought.isPrivate) return false;
-    if (filters.category !== "all" && thought.category !== filters.category) {
-      return false;
-    }
+    if (filters.category !== "all" && thought.category !== filters.category) return false;
     if (filters.tags.length > 0 && !filters.tags.some((tag) => thought.tags.includes(tag))) {
       return false;
     }
+
     if (
       query &&
       !thought.title.toLowerCase().includes(query) &&
@@ -53,15 +54,15 @@ function applySort(thoughts: Thought[], sort: ThoughtSort): Thought[] {
 
 function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-surface-2 border border-border">
-        <Brain className="w-6 h-6 text-text-muted" />
+    <div className="flex flex-col items-center justify-center gap-4 py-24">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface-2">
+        <Brain className="h-6 w-6 text-text-muted" />
       </div>
       <div className="text-center">
         <p className="text-sm font-medium text-text-secondary">
           {hasFilters ? "没有符合筛选条件的笔记" : "暂无思考笔记"}
         </p>
-        <p className="text-xs text-text-muted mt-1">
+        <p className="mt-1 text-xs text-text-muted">
           {hasFilters ? "试试调整搜索、分类或自定义标签筛选。" : "记录你的市场分析和交易思考。"}
         </p>
       </div>
@@ -70,19 +71,19 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 }
 
 export function ThoughtsView() {
-  const { thoughts, deleteThought } = useThoughts();
-
+  const activeUserId = useAppUsers((state) => state.activeUserId);
+  const thoughts = useThoughts((state) => state.thoughts);
+  const removeThought = useThoughts((state) => state.deleteThought);
   const [filters, setFilters] = useState<ThoughtFiltersState>(DEFAULT_THOUGHT_FILTERS);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedThought, setSelectedThought] = useState<Thought | null>(null);
   const [drawerMode, setDrawerMode] = useState<"view" | "edit">("edit");
   const [deleteTarget, setDeleteTarget] = useState<Thought | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const filtered = useMemo(() => applyFilters(thoughts, filters), [thoughts, filters]);
-  const sorted = useMemo(
-    () => applySort(filtered, filters.sort),
-    [filtered, filters.sort]
-  );
+  const sorted = useMemo(() => applySort(filtered, filters.sort), [filtered, filters.sort]);
 
   function handleOpenThought(thought: Thought) {
     setSelectedThought(thought);
@@ -107,6 +108,23 @@ export function ThoughtsView() {
     setSelectedThought(null);
   }
 
+  async function handleDeleteThought() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      await deleteThoughtFromServer(activeUserId, deleteTarget.id);
+      removeThought(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError((err as Error).message || "删除失败，请稍后重试");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const isFiltered =
     filters.search !== "" ||
     filters.category !== "all" ||
@@ -126,7 +144,7 @@ export function ThoughtsView() {
           <Button
             variant="primary"
             size="sm"
-            iconLeft={<Plus className="w-4 h-4" />}
+            iconLeft={<Plus className="h-4 w-4" />}
             onClick={handleNewThought}
             className="shrink-0"
           >
@@ -137,7 +155,7 @@ export function ThoughtsView() {
         {sorted.length === 0 ? (
           <EmptyState hasFilters={isFiltered} />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {sorted.map((thought) => (
               <ThoughtCard
                 key={thought.id}
@@ -159,20 +177,25 @@ export function ThoughtsView() {
       />
 
       <Dialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError("");
+        }}
         title="删除这条笔记？"
         description={
-          deleteTarget ? `"${deleteTarget.title}" 将从思考笔记中永久删除。` : undefined
+          deleteTarget
+            ? deleteError
+              ? `删除失败: ${deleteError}`
+              : `"${deleteTarget.title}" 将从思考笔记中永久删除。`
+            : undefined
         }
         confirmLabel="删除"
         confirmVariant="danger"
         onConfirm={() => {
-          if (deleteTarget) {
-            deleteThought(deleteTarget.id);
-            setDeleteTarget(null);
-          }
+          void handleDeleteThought();
         }}
+        loading={deleting}
       />
     </>
   );

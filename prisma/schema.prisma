@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id       String             @id
+  name     String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  trades   TradeRecord[]
+  thoughts ThoughtRecord[]
+  setting  PortfolioSetting?
+}
+
+model TradeRecord {
+  id           String   @id
+  profileId    String
+  ticker       String
+  name         String?
+  direction    String
+  status       String
+  assetClass   String
+  currency     String
+  entryDate    String
+  exitDate     String?
+  entryPrice   Float
+  exitPrice    Float?
+  currentPrice Float?
+  quantity     Float
+  fees         Float
+  setupType    String?
+  tagsJson     String
+  notes        String?
+  createdAt    String
+  updatedAt    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, status])
+  @@index([profileId, exitDate])
+  @@index([profileId, updatedAt])
+}
+
+model ThoughtRecord {
+  id         String   @id
+  profileId  String
+  title      String
+  content    String
+  category   String
+  tagsJson   String
+  ticker     String?
+  isPrivate  Boolean  @default(false)
+  createdAt  String
+  updatedAt  String
+  profile    Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, category])
+  @@index([profileId, updatedAt])
+}
+
+model PortfolioSetting {
+  profileId      String   @id
+  initialCapital Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
