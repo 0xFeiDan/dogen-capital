@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BarChart3,
-  BookOpen,
-  Brain,
-  LayoutDashboard,
-  TrendingUp,
-  X,
-} from "lucide-react";
+import { BookOpen, Brain, LayoutDashboard, TrendingUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -27,11 +20,6 @@ const NAV_ITEMS = [
     label: "思考笔记",
     href: "/thoughts",
     icon: Brain,
-  },
-  {
-    label: "统计分析",
-    href: "/analytics",
-    icon: BarChart3,
   },
 ] as const;
 
@@ -55,9 +43,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-full w-56 flex-col",
-          "border-r border-border bg-surface-1",
-          "transition-transform duration-200 ease-in-out",
+          "fixed left-0 top-0 z-40 flex h-full w-56 flex-col border-r border-border bg-surface-1 transition-transform duration-200 ease-in-out",
           open ? "translate-x-0" : "-translate-x-full",
           "lg:static lg:z-auto lg:translate-x-0"
         )}
@@ -68,7 +54,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <TrendingUp className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="leading-none tracking-tight text-sm font-semibold text-text-primary">
+              <p className="text-sm font-semibold leading-none tracking-tight text-text-primary">
                 Dogen
               </p>
               <p className="text-2xs uppercase tracking-widest text-text-muted">Capital</p>
@@ -119,7 +105,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         <div className="shrink-0 border-t border-border px-4 py-4">
-          <p className="text-2xs text-text-muted">&copy; {new Date().getFullYear()} Dogen Capital</p>
+          <p className="text-2xs text-text-muted">
+            &copy; {new Date().getFullYear()} Dogen Capital
+          </p>
         </div>
       </aside>
     </>

@@ -10,24 +10,31 @@ interface SaveTradeRequest {
 }
 
 export async function POST(request: Request) {
-  const authError = await requireAuthenticatedApiRequest();
-  if (authError) return authError;
-
-  const originError = await validateSameOriginRequest(request);
-  if (originError) return originError;
-
-  let body: SaveTradeRequest;
-
   try {
-    body = (await request.json()) as SaveTradeRequest;
-  } catch {
-    return NextResponse.json({ error: "请求体无效" }, { status: 400 });
-  }
+    const authError = await requireAuthenticatedApiRequest();
+    if (authError) return authError;
 
-  if (!isAppUserId(body.profileId) || !body.trade?.id || !body.trade?.ticker) {
-    return NextResponse.json({ error: "交易数据不完整" }, { status: 400 });
-  }
+    const originError = await validateSameOriginRequest(request);
+    if (originError) return originError;
 
-  const trade = await upsertTrade(body.profileId, body.trade);
-  return NextResponse.json({ trade });
+    let body: SaveTradeRequest;
+
+    try {
+      body = (await request.json()) as SaveTradeRequest;
+    } catch {
+      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+    }
+
+    if (!isAppUserId(body.profileId) || !body.trade?.id || !body.trade?.ticker) {
+      return NextResponse.json({ error: "交易数据不完整" }, { status: 400 });
+    }
+
+    const trade = await upsertTrade(body.profileId, body.trade);
+    return NextResponse.json({ trade });
+  } catch (error) {
+    return NextResponse.json(
+      { error: `保存交易失败: ${(error as Error).message}` },
+      { status: 500 }
+    );
+  }
 }

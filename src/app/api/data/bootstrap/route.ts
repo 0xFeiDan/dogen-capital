@@ -3,9 +3,16 @@ import { requireAuthenticatedApiRequest } from "@/lib/auth/api";
 import { getServerSnapshot } from "@/lib/server-data";
 
 export async function GET() {
-  const authError = await requireAuthenticatedApiRequest();
-  if (authError) return authError;
+  try {
+    const authError = await requireAuthenticatedApiRequest();
+    if (authError) return authError;
 
-  const snapshot = await getServerSnapshot();
-  return NextResponse.json(snapshot);
+    const snapshot = await getServerSnapshot();
+    return NextResponse.json(snapshot);
+  } catch (error) {
+    return NextResponse.json(
+      { error: `服务器同步初始化失败: ${(error as Error).message}` },
+      { status: 500 }
+    );
+  }
 }

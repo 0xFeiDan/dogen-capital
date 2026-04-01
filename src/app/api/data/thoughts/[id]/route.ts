@@ -19,21 +19,26 @@ export async function PATCH(
   const originError = await validateSameOriginRequest(request);
   if (originError) return originError;
 
-  const { id } = await context.params;
-  let body: UpdateThoughtRequest;
-
   try {
-    body = (await request.json()) as UpdateThoughtRequest;
-  } catch {
-    return NextResponse.json({ error: "请求体无效" }, { status: 400 });
-  }
+    const { id } = await context.params;
+    let body: UpdateThoughtRequest;
 
-  if (!isAppUserId(body.profileId) || !body.thought || body.thought.id !== id) {
-    return NextResponse.json({ error: "笔记数据不完整" }, { status: 400 });
-  }
+    try {
+      body = (await request.json()) as UpdateThoughtRequest;
+    } catch {
+      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+    }
 
-  const thought = await upsertThought(body.profileId, body.thought);
-  return NextResponse.json({ thought });
+    if (!isAppUserId(body.profileId) || !body.thought || body.thought.id !== id) {
+      return NextResponse.json({ error: "笔记数据不完整" }, { status: 400 });
+    }
+
+    const thought = await upsertThought(body.profileId, body.thought);
+    return NextResponse.json({ thought });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "保存笔记失败";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function DELETE(
@@ -46,14 +51,19 @@ export async function DELETE(
   const originError = await validateSameOriginRequest(request);
   if (originError) return originError;
 
-  const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const profileId = searchParams.get("profileId");
+  try {
+    const { id } = await context.params;
+    const { searchParams } = new URL(request.url);
+    const profileId = searchParams.get("profileId");
 
-  if (!isAppUserId(profileId)) {
-    return NextResponse.json({ error: "用户信息无效" }, { status: 400 });
+    if (!isAppUserId(profileId)) {
+      return NextResponse.json({ error: "用户信息无效" }, { status: 400 });
+    }
+
+    await deleteThought(profileId, id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "删除笔记失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  await deleteThought(profileId, id);
-  return NextResponse.json({ ok: true });
 }

@@ -12,7 +12,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "仪表盘",
   "/journal": "交易日志",
   "/thoughts": "思考笔记",
-  "/analytics": "统计分析",
 };
 
 interface TopBarProps {

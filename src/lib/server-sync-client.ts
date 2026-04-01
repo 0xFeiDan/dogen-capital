@@ -1,9 +1,6 @@
 "use client";
 
-import { useAppUsers } from "@/store/useAppUsers";
-import { usePortfolioSettings } from "@/store/usePortfolioSettings";
-import { useThoughts } from "@/store/useThoughts";
-import { useTrades } from "@/store/useTrades";
+import { triggerDownload } from "@/lib/io";
 import type {
   ServerBackupPayload,
   ServerSnapshot,
@@ -11,40 +8,56 @@ import type {
   ThoughtsByUser,
   TradesByUser,
 } from "@/lib/server-data";
-import type { Thought, Trade } from "@/types";
 import type { AppUserId } from "@/lib/users";
-import { triggerDownload } from "@/lib/io";
+import { useAppUsers } from "@/store/useAppUsers";
+import { usePortfolioSettings } from "@/store/usePortfolioSettings";
+import { useThoughts } from "@/store/useThoughts";
+import { useTrades } from "@/store/useTrades";
+import type { Thought, Trade } from "@/types";
 
 const DEFAULT_INITIAL_CAPITAL = 100000;
 
 let syncPauseCount = 0;
 let syncInFlight = false;
 
-/** Increment pause counter — sync will be skipped while count > 0 */
 export function pauseSync() {
   syncPauseCount++;
 }
 
-/** Decrement pause counter */
 export function resumeSync() {
   syncPauseCount = Math.max(0, syncPauseCount - 1);
 }
 
-/** Returns true if sync is currently paused */
 export function isSyncPaused(): boolean {
   return syncPauseCount > 0;
 }
 
-/** Returns true if a sync request is already in flight */
 export function isSyncInFlight(): boolean {
   return syncInFlight;
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const data = (await response.json()) as T & { error?: string };
+  const rawText = await response.text();
+  let data: (T & { error?: string }) | null = null;
+
+  if (rawText.trim()) {
+    try {
+      data = JSON.parse(rawText) as T & { error?: string };
+    } catch {
+      if (!response.ok) {
+        throw new Error(rawText.trim() || "服务器返回了非 JSON 错误响应");
+      }
+
+      throw new Error("服务器返回了无法解析的数据");
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(data.error ?? "请求失败");
+    throw new Error(data?.error ?? (rawText.trim() || "请求失败"));
+  }
+
+  if (!data) {
+    throw new Error("服务器返回了空响应");
   }
 
   return data;
@@ -93,15 +106,18 @@ export async function fetchServerSnapshot(): Promise<ServerSnapshot> {
 }
 
 export async function syncServerSnapshot(): Promise<ServerSnapshot | null> {
-  if (syncPauseCount > 0 || syncInFlight) return null;
+  if (syncPauseCount > 0 || syncInFlight) {
+    return null;
+  }
 
   syncInFlight = true;
 
   try {
     const snapshot = await fetchServerSnapshot();
 
-    // If sync was paused while request was in flight, discard result
-    if (syncPauseCount > 0) return null;
+    if (syncPauseCount > 0) {
+      return null;
+    }
 
     if (!snapshot.serverHasData) {
       const localPayload = getLocalBackupPayload();
@@ -112,7 +128,10 @@ export async function syncServerSnapshot(): Promise<ServerSnapshot | null> {
         });
 
         const refreshedSnapshot = await fetchServerSnapshot();
-        if (syncPauseCount > 0) return null;
+        if (syncPauseCount > 0) {
+          return null;
+        }
+
         applyServerSnapshot(refreshedSnapshot);
         return refreshedSnapshot;
       }
@@ -280,8 +299,18 @@ export async function downloadServerExport(
   });
 
   if (!response.ok) {
-    const data = (await response.json()) as { error?: string };
-    throw new Error(data.error ?? "下载失败");
+    const rawText = await response.text();
+
+    if (rawText.trim()) {
+      try {
+        const data = JSON.parse(rawText) as { error?: string };
+        throw new Error(data.error ?? "下载失败");
+      } catch {
+        throw new Error(rawText.trim() || "下载失败");
+      }
+    }
+
+    throw new Error("下载失败");
   }
 
   const contentDisposition = response.headers.get("Content-Disposition") ?? "";

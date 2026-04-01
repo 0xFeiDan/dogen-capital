@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { jsonToThoughts, jsonToTrades } from "@/lib/io";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
+import { jsonToThoughts, jsonToTrades } from "@/lib/io";
 import {
   importBackup,
   importThoughtsForProfile,
@@ -44,79 +44,86 @@ function normalizeSettingsByUser(source: Partial<SettingsByUser>): SettingsByUse
 }
 
 export async function POST(request: Request) {
-  const authError = await requireAuthenticatedApiRequest();
-  if (authError) return authError;
-
-  const originError = await validateSameOriginRequest(request);
-  if (originError) return originError;
-
-  let body: ImportRequest;
-
   try {
-    body = (await request.json()) as ImportRequest;
-  } catch {
-    return NextResponse.json({ error: "请求体无效" }, { status: 400 });
-  }
+    const authError = await requireAuthenticatedApiRequest();
+    if (authError) return authError;
 
-  if (body.format === "backup-json") {
-    const tradesByUser = {} as TradesByUser;
-    const thoughtsByUser = {} as ThoughtsByUser;
+    const originError = await validateSameOriginRequest(request);
+    if (originError) return originError;
 
-    for (const user of APP_USERS) {
-      const tradesResult = jsonToTrades(
-        JSON.stringify(body.payload.tradesByUser?.[user.id] ?? [])
-      );
-      const thoughtsResult = jsonToThoughts(
-        JSON.stringify(body.payload.thoughtsByUser?.[user.id] ?? [])
-      );
+    let body: ImportRequest;
 
-      if (tradesResult.errors.length > 0 || thoughtsResult.errors.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              tradesResult.errors[0] ??
-              thoughtsResult.errors[0] ??
-              "备份文件内容无效",
-          },
-          { status: 400 }
-        );
-      }
-
-      tradesByUser[user.id] = tradesResult.data;
-      thoughtsByUser[user.id] = thoughtsResult.data;
+    try {
+      body = (await request.json()) as ImportRequest;
+    } catch {
+      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
     }
 
-    await importBackup(
-      {
-        tradesByUser,
-        thoughtsByUser,
-        settingsByUser: normalizeSettingsByUser(body.payload.settingsByUser ?? {}),
-      },
-      body.mode
-    );
+    if (body.format === "backup-json") {
+      const tradesByUser = {} as TradesByUser;
+      const thoughtsByUser = {} as ThoughtsByUser;
 
-    return NextResponse.json({ ok: true });
-  }
+      for (const user of APP_USERS) {
+        const tradesResult = jsonToTrades(
+          JSON.stringify(body.payload.tradesByUser?.[user.id] ?? [])
+        );
+        const thoughtsResult = jsonToThoughts(
+          JSON.stringify(body.payload.thoughtsByUser?.[user.id] ?? [])
+        );
 
-  if (!isAppUserId(body.profileId) || !Array.isArray(body.items)) {
-    return NextResponse.json({ error: "导入参数无效" }, { status: 400 });
-  }
+        if (tradesResult.errors.length > 0 || thoughtsResult.errors.length > 0) {
+          return NextResponse.json(
+            {
+              error:
+                tradesResult.errors[0] ??
+                thoughtsResult.errors[0] ??
+                "备份文件内容无效",
+            },
+            { status: 400 }
+          );
+        }
 
-  if (body.format === "thoughts-json") {
-    const result = jsonToThoughts(JSON.stringify(body.items));
+        tradesByUser[user.id] = tradesResult.data;
+        thoughtsByUser[user.id] = thoughtsResult.data;
+      }
+
+      await importBackup(
+        {
+          tradesByUser,
+          thoughtsByUser,
+          settingsByUser: normalizeSettingsByUser(body.payload.settingsByUser ?? {}),
+        },
+        body.mode
+      );
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!isAppUserId(body.profileId) || !Array.isArray(body.items)) {
+      return NextResponse.json({ error: "导入参数无效" }, { status: 400 });
+    }
+
+    if (body.format === "thoughts-json") {
+      const result = jsonToThoughts(JSON.stringify(body.items));
+      if (result.errors.length > 0) {
+        return NextResponse.json({ error: result.errors[0] }, { status: 400 });
+      }
+
+      await importThoughtsForProfile(body.profileId, result.data, body.mode);
+      return NextResponse.json({ ok: true, count: result.data.length });
+    }
+
+    const result = jsonToTrades(JSON.stringify(body.items));
     if (result.errors.length > 0) {
       return NextResponse.json({ error: result.errors[0] }, { status: 400 });
     }
 
-    await importThoughtsForProfile(body.profileId, result.data, body.mode);
+    await importTradesForProfile(body.profileId, result.data, body.mode);
     return NextResponse.json({ ok: true, count: result.data.length });
+  } catch (error) {
+    return NextResponse.json(
+      { error: `导入数据失败: ${(error as Error).message}` },
+      { status: 500 }
+    );
   }
-
-  const result = jsonToTrades(JSON.stringify(body.items));
-  if (result.errors.length > 0) {
-    return NextResponse.json({ error: result.errors[0] }, { status: 400 });
-  }
-
-  await importTradesForProfile(body.profileId, result.data, body.mode);
-  return NextResponse.json({ ok: true, count: result.data.length });
 }
