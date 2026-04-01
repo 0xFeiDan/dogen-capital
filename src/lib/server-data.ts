@@ -4,6 +4,102 @@ import { APP_USERS, type AppUserId, type AppUserProfile, isAppUserId } from "@/l
 
 const DEFAULT_INITIAL_CAPITAL = 100000;
 
+async function ensureDatabaseSchema() {
+  await db.$executeRawUnsafe(`PRAGMA foreign_keys = ON`);
+
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Profile" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "TradeRecord" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "profileId" TEXT NOT NULL,
+      "ticker" TEXT NOT NULL,
+      "name" TEXT,
+      "direction" TEXT NOT NULL,
+      "status" TEXT NOT NULL,
+      "assetClass" TEXT NOT NULL,
+      "currency" TEXT NOT NULL,
+      "entryDate" TEXT NOT NULL,
+      "exitDate" TEXT,
+      "entryPrice" REAL NOT NULL,
+      "exitPrice" REAL,
+      "currentPrice" REAL,
+      "quantity" REAL NOT NULL,
+      "fees" REAL NOT NULL,
+      "setupType" TEXT,
+      "tagsJson" TEXT NOT NULL,
+      "notes" TEXT,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      CONSTRAINT "TradeRecord_profileId_fkey"
+        FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThoughtRecord" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "profileId" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "category" TEXT NOT NULL,
+      "tagsJson" TEXT NOT NULL,
+      "ticker" TEXT,
+      "isPrivate" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      CONSTRAINT "ThoughtRecord_profileId_fkey"
+        FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "PortfolioSetting" (
+      "profileId" TEXT NOT NULL PRIMARY KEY,
+      "initialCapital" REAL NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "PortfolioSetting_profileId_fkey"
+        FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "TradeRecord_profileId_status_idx"
+    ON "TradeRecord" ("profileId", "status")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "TradeRecord_profileId_exitDate_idx"
+    ON "TradeRecord" ("profileId", "exitDate")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "TradeRecord_profileId_updatedAt_idx"
+    ON "TradeRecord" ("profileId", "updatedAt")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThoughtRecord_profileId_category_idx"
+    ON "ThoughtRecord" ("profileId", "category")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThoughtRecord_profileId_updatedAt_idx"
+    ON "ThoughtRecord" ("profileId", "updatedAt")
+  `);
+}
+
 async function ensureProfiles() {
   await Promise.all(
     APP_USERS.map(async (user) => {
@@ -113,7 +209,10 @@ function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
 
 export async function ensureServerSetup() {
   if (!setupPromise) {
-    setupPromise = ensureProfiles().catch((error) => {
+    setupPromise = (async () => {
+      await ensureDatabaseSchema();
+      await ensureProfiles();
+    })().catch((error) => {
       setupPromise = null;
       throw error;
     });
