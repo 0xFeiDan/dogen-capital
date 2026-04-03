@@ -36,6 +36,27 @@ const AssetPieChart = dynamic(() => import("./AssetPieChart"), {
   loading: () => <ChartLoader />,
 });
 
+const CAPITAL_LABEL = "\u672c\u91d1";
+const SAVE_LABEL = "\u4fdd\u5b58";
+const SAVING_LABEL = "\u4fdd\u5b58\u4e2d...";
+const CANCEL_LABEL = "\u53d6\u6d88";
+const EDIT_LABEL = "\u4fee\u6539";
+const CAPITAL_ERROR = "\u8bf7\u8f93\u5165\u5927\u4e8e 0 \u7684\u672c\u91d1";
+const CAPITAL_HINT = "\u53ef\u968f\u65f6\u624b\u52a8\u8c03\u6574";
+const TOTAL_PNL_LABEL = "\u603b\u76c8\u4e8f";
+const REALISED_LABEL = "\u5df2\u5b9e\u73b0";
+const UNREALISED_LABEL = "\u672a\u5b9e\u73b0";
+const WIN_RATE_LABEL = "\u80dc\u7387";
+const OPEN_TRADES_LABEL = "\u6301\u4ed3\u4e2d";
+const NO_OPEN_TRADES_LABEL = "\u6682\u65e0\u6301\u4ed3";
+const EQUITY_CURVE_LABEL = "\u51c0\u503c\u66f2\u7ebf";
+const EQUITY_CURVE_SUB = "\u672c\u91d1 + \u5df2\u5b9e\u73b0\u51c0\u76c8\u4e8f";
+const ASSET_ALLOCATION_LABEL = "\u8d44\u4ea7\u5206\u5e03";
+const ASSET_ALLOCATION_SUB = "\u5f53\u524d\u6301\u4ed3 + \u73b0\u91d1 / \u672c\u4f4d";
+const MONTHLY_PNL_LABEL = "\u6708\u5ea6\u76c8\u4e8f";
+const MONTHLY_PNL_SUB =
+  "\u4ec5\u7edf\u8ba1\u5df2\u5e73\u4ed3\u51c0\u76c8\u4e8f\uff0c\u6309\u51fa\u573a\u6708\u4efd";
+
 function ChartLoader() {
   return (
     <div className="flex h-52 items-center justify-center">
@@ -55,14 +76,20 @@ export function DashboardView() {
   const [savingCapital, setSavingCapital] = useState(false);
 
   const pnlSign =
-    stats.totalNetPnl > 0
+    stats.combinedNetPnl > 0
       ? "positive"
-      : stats.totalNetPnl < 0
+      : stats.combinedNetPnl < 0
+        ? "negative"
+        : "neutral";
+  const unrealisedPnlSign =
+    stats.unrealisedNetPnl > 0
+      ? "positive"
+      : stats.unrealisedNetPnl < 0
         ? "negative"
         : "neutral";
 
   const capitalPnlPercent =
-    initialCapital > 0 ? (stats.totalNetPnl / initialCapital) * 100 : 0;
+    initialCapital > 0 ? (stats.combinedNetPnl / initialCapital) * 100 : 0;
 
   useEffect(() => {
     if (!editingCapital) {
@@ -75,7 +102,7 @@ export function DashboardView() {
     const nextValue = Number(capitalInput.replaceAll(",", "").trim());
 
     if (!Number.isFinite(nextValue) || nextValue <= 0) {
-      setCapitalError("请输入大于 0 的本金");
+      setCapitalError(CAPITAL_ERROR);
       return;
     }
 
@@ -98,7 +125,7 @@ export function DashboardView() {
         <div className="relative overflow-hidden rounded-xl border border-border bg-surface-1 p-5 shadow-card shadow-inner-sm">
           <div className="relative mb-3 flex items-start justify-between gap-3">
             <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
-              本金
+              {CAPITAL_LABEL}
             </p>
             <div className="flex items-center gap-2">
               {editingCapital ? (
@@ -110,7 +137,7 @@ export function DashboardView() {
                     disabled={savingCapital}
                     iconLeft={<Check className="h-3 w-3" />}
                   >
-                    {savingCapital ? "保存中" : "保存"}
+                    {savingCapital ? SAVING_LABEL : SAVE_LABEL}
                   </Button>
                   <Button
                     variant="ghost"
@@ -119,7 +146,7 @@ export function DashboardView() {
                     disabled={savingCapital}
                     iconLeft={<X className="h-3 w-3" />}
                   >
-                    取消
+                    {CANCEL_LABEL}
                   </Button>
                 </>
               ) : (
@@ -129,7 +156,7 @@ export function DashboardView() {
                   onClick={() => setEditingCapital(true)}
                   iconLeft={<PencilLine className="h-3 w-3" />}
                 >
-                  修改
+                  {EDIT_LABEL}
                 </Button>
               )}
 
@@ -146,7 +173,7 @@ export function DashboardView() {
           {editingCapital ? (
             <div className="mt-3 space-y-2">
               <Input
-                aria-label="本金"
+                aria-label={CAPITAL_LABEL}
                 value={capitalInput}
                 onChange={(event) => {
                   setCapitalInput(event.target.value);
@@ -154,36 +181,36 @@ export function DashboardView() {
                     setCapitalError("");
                   }
                 }}
-                placeholder="输入本金"
+                placeholder={CAPITAL_LABEL}
                 inputMode="decimal"
                 error={capitalError || undefined}
               />
             </div>
           ) : (
             <div className="relative mt-2 flex items-center gap-2">
-              <span className="truncate text-xs text-text-muted">可随时自定义或修改</span>
+              <span className="truncate text-xs text-text-muted">{CAPITAL_HINT}</span>
             </div>
           )}
         </div>
 
         <StatCard
-          label="净盈亏"
-          value={formatCurrency(stats.totalNetPnl, "USD", true)}
+          label={TOTAL_PNL_LABEL}
+          value={formatCurrency(stats.combinedNetPnl, "USD", true)}
           trend={capitalPnlPercent !== 0 ? formatPercent(capitalPnlPercent) : undefined}
           trendSign={pnlSign}
-          sub="基于已平仓交易"
+          sub={`${REALISED_LABEL} ${formatCurrency(stats.realisedNetPnl, "USD", true)} · ${UNREALISED_LABEL} ${formatCurrency(stats.unrealisedNetPnl, "USD", true)}`}
           icon={TrendingUp}
           iconColor={pnlSign === "positive" ? "text-profit" : "text-loss"}
           accent
         />
 
         <StatCard
-          label="胜率"
+          label={WIN_RATE_LABEL}
           value={stats.closedTrades > 0 ? `${stats.winRate.toFixed(1)}%` : "--"}
-          sub={`${stats.closedTrades} 笔已平仓`}
+          sub={`${stats.closedTrades} \u7b14\u5df2\u5e73\u4ed3`}
           trend={
             stats.closedTrades > 0
-              ? `${stats.closedTrades - Math.round(stats.closedTrades * (stats.winRate / 100))} 笔亏损`
+              ? `${stats.closedTrades - Math.round(stats.closedTrades * (stats.winRate / 100))} \u7b14\u4e8f\u635f`
               : undefined
           }
           trendSign="neutral"
@@ -192,11 +219,15 @@ export function DashboardView() {
         />
 
         <StatCard
-          label="持仓中"
+          label={OPEN_TRADES_LABEL}
           value={String(stats.openTrades)}
-          sub={`共 ${stats.totalTrades} 笔交易`}
-          trend={stats.openTrades > 0 ? `${stats.openTrades} 笔进行中` : "暂无持仓"}
-          trendSign="neutral"
+          sub={`\u5171 ${stats.totalTrades} \u7b14\u4ea4\u6613`}
+          trend={
+            stats.openTrades > 0
+              ? `${UNREALISED_LABEL} ${formatCurrency(stats.unrealisedNetPnl, "USD", true)}`
+              : NO_OPEN_TRADES_LABEL
+          }
+          trendSign={stats.openTrades > 0 ? unrealisedPnlSign : "neutral"}
           icon={Layers}
           iconColor="text-text-secondary"
         />
@@ -205,8 +236,10 @@ export function DashboardView() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card noPadding className="lg:col-span-2">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <CardTitle>净值曲线</CardTitle>
-            <span className="text-xs text-text-muted tabular-nums">本金 + 累计净盈亏</span>
+            <CardTitle>{EQUITY_CURVE_LABEL}</CardTitle>
+            <span className="text-xs text-text-muted tabular-nums">
+              {EQUITY_CURVE_SUB}
+            </span>
           </div>
           <div className="px-2 py-4">
             <EquityChart />
@@ -215,9 +248,9 @@ export function DashboardView() {
 
         <Card noPadding>
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <CardTitle>资产分布</CardTitle>
+            <CardTitle>{ASSET_ALLOCATION_LABEL}</CardTitle>
             <span className="text-xs text-text-muted tabular-nums">
-              当前持仓 + 现金 / 本位
+              {ASSET_ALLOCATION_SUB}
             </span>
           </div>
           <div className="px-5 py-4">
@@ -228,10 +261,8 @@ export function DashboardView() {
 
       <Card noPadding>
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <CardTitle>月度盈亏</CardTitle>
-          <span className="text-xs text-text-muted tabular-nums">
-            已平仓净盈亏，按出场月份
-          </span>
+          <CardTitle>{MONTHLY_PNL_LABEL}</CardTitle>
+          <span className="text-xs text-text-muted tabular-nums">{MONTHLY_PNL_SUB}</span>
         </div>
         <div className="px-2 py-4">
           <MonthlyBarChart />

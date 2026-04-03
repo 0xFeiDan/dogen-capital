@@ -1,6 +1,10 @@
 "use client";
 
-import type { BinanceBookTickerSnapshot } from "@/lib/pricing";
+import {
+  normalizeBinanceSymbol,
+  type BinanceBookTickerSnapshot,
+} from "@/lib/pricing";
+import type { BinanceMarketType } from "@/types";
 
 interface BinanceQuotesResponse {
   quotes: BinanceBookTickerSnapshot[];
@@ -28,4 +32,28 @@ export async function fetchBinanceQuotes(params: {
   }
 
   return data.quotes ?? [];
+}
+
+export async function fetchBinanceQuote(params: {
+  marketType: BinanceMarketType;
+  symbol?: string | null;
+}): Promise<BinanceBookTickerSnapshot | null> {
+  const symbol = normalizeBinanceSymbol(params.symbol);
+
+  if (!symbol) {
+    return null;
+  }
+
+  const quotes = await fetchBinanceQuotes({
+    spotSymbols: params.marketType === "spot" ? [symbol] : [],
+    usdmFuturesSymbols: params.marketType === "usdm-futures" ? [symbol] : [],
+  });
+
+  return (
+    quotes.find(
+      (quote) =>
+        quote.marketType === params.marketType &&
+        normalizeBinanceSymbol(quote.symbol) === symbol
+    ) ?? null
+  );
 }

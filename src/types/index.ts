@@ -77,6 +77,9 @@ export interface PortfolioStats {
   closedTrades: number;
   openTrades: number;
   winRate: number;          // 0–100
+  realisedNetPnl: number;
+  unrealisedNetPnl: number;
+  combinedNetPnl: number;
   totalNetPnl: number;
   totalGrossPnl: number;
   avgWin: number;

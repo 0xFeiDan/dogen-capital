@@ -21,6 +21,17 @@ import {
 import { TradeTable } from "./TradeTable";
 import type { SortDir, SortField } from "./TradeTable";
 
+const OPEN_TRADES_TEXT = "\u6301\u4ed3\u4e2d";
+const CLOSED_TRADES_TEXT = "\u5df2\u5e73\u4ed3";
+const REALISED_TEXT = "\u5df2\u5b9e\u73b0";
+const UNREALISED_TEXT = "\u672a\u5b9e\u73b0";
+const TOTAL_PNL_TEXT = "\u603b\u76c8\u4e8f";
+const WIN_RATE_TEXT = "\u80dc\u7387";
+const DELETE_ERROR_TEXT = "\u5220\u9664\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
+const ADD_TRADE_TEXT = "\u65b0\u589e\u4ea4\u6613";
+const DELETE_DIALOG_TITLE = "\u5220\u9664\u4ea4\u6613\uff1f";
+const DELETE_LABEL = "\u5220\u9664";
+
 function getPnlNet(trade: Trade): number {
   if (trade.status === "closed") return computeTradePnL(trade)?.net ?? 0;
   if (trade.currentPrice != null) {
@@ -135,6 +146,7 @@ function filterTrades(trades: Trade[], filters: JournalFilters): Trade[] {
       if (!pnl && trade.status === "open" && trade.currentPrice != null) {
         pnl = computeUnrealisedPnL(trade, trade.currentPrice);
       }
+
       if (filters.pnl === "win" && (!pnl || !pnl.isWin)) return false;
       if (filters.pnl === "loss" && (!pnl || pnl.isWin)) return false;
     }
@@ -150,13 +162,20 @@ function filterTrades(trades: Trade[], filters: JournalFilters): Trade[] {
 function SummaryBar({ trades }: { trades: Trade[] }) {
   const openTrades = trades.filter((trade) => trade.status === "open");
   const closedTrades = trades.filter((trade) => trade.status === "closed");
-  const pnls = closedTrades
+  const realisedPnls = closedTrades
     .map((trade) => computeTradePnL(trade))
     .filter(Boolean) as NonNullable<ReturnType<typeof computeTradePnL>>[];
+  const unrealisedPnls = openTrades
+    .map((trade) =>
+      trade.currentPrice != null ? computeUnrealisedPnL(trade, trade.currentPrice) : null
+    )
+    .filter(Boolean) as NonNullable<ReturnType<typeof computeUnrealisedPnL>>[];
 
-  const totalPnl = pnls.reduce((sum, pnl) => sum + pnl.net, 0);
-  const wins = pnls.filter((pnl) => pnl.isWin).length;
-  const winRate = pnls.length > 0 ? (wins / pnls.length) * 100 : null;
+  const realisedPnl = realisedPnls.reduce((sum, pnl) => sum + pnl.net, 0);
+  const unrealisedPnl = unrealisedPnls.reduce((sum, pnl) => sum + pnl.net, 0);
+  const combinedPnl = realisedPnl + unrealisedPnl;
+  const wins = realisedPnls.filter((pnl) => pnl.isWin).length;
+  const winRate = realisedPnls.length > 0 ? (wins / realisedPnls.length) * 100 : null;
 
   if (trades.length === 0) return null;
 
@@ -164,28 +183,56 @@ function SummaryBar({ trades }: { trades: Trade[] }) {
     <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-border bg-surface-2/50 px-5 py-3">
       <span className="text-xs text-text-muted">
         <span className="font-medium text-text-secondary">{openTrades.length}</span>
-        {" 持仓中 · "}
+        {` ${OPEN_TRADES_TEXT} · `}
         <span className="font-medium text-text-secondary">{closedTrades.length}</span>
-        {" 已平仓"}
+        {` ${CLOSED_TRADES_TEXT}`}
       </span>
 
-      {pnls.length > 0 && (
+      {realisedPnls.length > 0 && (
         <span className="text-xs text-text-muted">
-          已实现盈亏:
+          {REALISED_TEXT}
           <span
             className={`ml-1 font-medium text-sm tabular-nums ${
-              totalPnl >= 0 ? "text-profit" : "text-loss"
+              realisedPnl >= 0 ? "text-profit" : "text-loss"
             }`}
           >
-            {totalPnl > 0 ? "+" : ""}
-            {formatCurrency(totalPnl)}
+            {realisedPnl > 0 ? "+" : ""}
+            {formatCurrency(realisedPnl)}
+          </span>
+        </span>
+      )}
+
+      {unrealisedPnls.length > 0 && (
+        <span className="text-xs text-text-muted">
+          {UNREALISED_TEXT}
+          <span
+            className={`ml-1 font-medium text-sm tabular-nums ${
+              unrealisedPnl >= 0 ? "text-profit" : "text-loss"
+            }`}
+          >
+            {unrealisedPnl > 0 ? "+" : ""}
+            {formatCurrency(unrealisedPnl)}
+          </span>
+        </span>
+      )}
+
+      {(realisedPnls.length > 0 || unrealisedPnls.length > 0) && (
+        <span className="text-xs text-text-muted">
+          {TOTAL_PNL_TEXT}
+          <span
+            className={`ml-1 font-medium text-sm tabular-nums ${
+              combinedPnl >= 0 ? "text-profit" : "text-loss"
+            }`}
+          >
+            {combinedPnl > 0 ? "+" : ""}
+            {formatCurrency(combinedPnl)}
           </span>
         </span>
       )}
 
       {winRate !== null && (
         <span className="text-xs text-text-muted">
-          胜率:
+          {WIN_RATE_TEXT}:
           <span className="ml-1 font-medium text-text-secondary">
             {winRate.toFixed(1)}%
           </span>
@@ -250,7 +297,7 @@ export function JournalView() {
       removeTrade(deleteTarget.id);
       setDeleteTarget(null);
     } catch (err) {
-      setDeleteError((err as Error).message || "删除失败，请稍后重试");
+      setDeleteError((err as Error).message || DELETE_ERROR_TEXT);
     } finally {
       setDeleting(false);
     }
@@ -274,7 +321,7 @@ export function JournalView() {
             onClick={handleNew}
             className="mt-0.5 shrink-0"
           >
-            新增交易
+            {ADD_TRADE_TEXT}
           </Button>
         </div>
 
@@ -303,15 +350,15 @@ export function JournalView() {
           setDeleteTarget(null);
           setDeleteError("");
         }}
-        title="删除交易？"
+        title={DELETE_DIALOG_TITLE}
         description={
           deleteTarget
             ? deleteError
-              ? `删除失败: ${deleteError}`
-              : `这会永久删除 ${deleteTarget.ticker} 的交易记录，且无法撤销。`
+              ? `\u5220\u9664\u5931\u8d25: ${deleteError}`
+              : `\u8fd9\u4f1a\u6c38\u4e45\u5220\u9664 ${deleteTarget.ticker} \u7684\u4ea4\u6613\u8bb0\u5f55\uff0c\u4e14\u65e0\u6cd5\u64a4\u9500\u3002`
             : undefined
         }
-        confirmLabel="删除"
+        confirmLabel={DELETE_LABEL}
         confirmVariant="danger"
         onConfirm={() => {
           void handleConfirmDelete();

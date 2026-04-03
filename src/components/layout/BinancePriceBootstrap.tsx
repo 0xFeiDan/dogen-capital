@@ -112,8 +112,10 @@ export function BinancePriceBootstrap() {
         );
 
       if (updates.length > 0) {
-        await updateTradeLivePricesOnServer(activeUserId, updates);
         applyLivePriceUpdates(updates);
+        void updateTradeLivePricesOnServer(activeUserId, updates).catch(() => {
+          // Keep local settlement prices flowing even if persistence fails temporarily.
+        });
       }
 
       consecutiveFailuresRef.current = 0;

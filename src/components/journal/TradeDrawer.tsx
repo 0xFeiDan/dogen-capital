@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, X } from "lucide-react";
+import { fetchBinanceQuote } from "@/lib/market-client";
+import { getTradeSettlementPrice, isBinancePricingEnabled } from "@/lib/pricing";
+import {
+  pauseSync,
+  resumeSync,
+  saveTradeToServer,
+  updateTradeOnServer,
+} from "@/lib/server-sync-client";
 import { cn } from "@/lib/utils";
-import { pauseSync, resumeSync, saveTradeToServer, updateTradeOnServer } from "@/lib/server-sync-client";
 import { useAppUsers } from "@/store/useAppUsers";
 import { useTrades } from "@/store/useTrades";
 import type { Trade } from "@/types";
@@ -20,6 +27,18 @@ function makeTradeId(): string {
   return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+const TRADE_DRAWER_LABEL = "\u4ea4\u6613\u8868\u5355";
+const CLOSE_LABEL = "\u5173\u95ed";
+const CREATE_TITLE = "\u65b0\u589e\u4ea4\u6613";
+const EDIT_TITLE = "\u7f16\u8f91\u4ea4\u6613";
+const SAVE_ERROR = "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
+const INVALID_BINANCE_SYMBOL = (
+  symbol: string
+) => `\u5e01\u5b89\u672a\u627e\u5230 ${symbol}\uff0c\u8bf7\u68c0\u67e5\u4ee3\u7801\u540e\u518d\u4fdd\u5b58`;
+const SUBMITTING_LABEL = "\u63d0\u4ea4\u4e2d...";
+const SAVE_CHANGES_LABEL = "\u4fdd\u5b58\u4fee\u6539";
+const ADD_TRADE_LABEL = "\u6dfb\u52a0\u4ea4\u6613";
+
 export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
   const activeUserId = useAppUsers((state) => state.activeUserId);
   const upsertTrade = useTrades((state) => state.upsertTrade);
@@ -30,6 +49,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
     if (open) {
       pauseSync();
     }
+
     return () => {
       if (open) {
         resumeSync();
@@ -39,6 +59,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
+
     return () => {
       document.body.style.overflow = "";
     };
@@ -58,11 +79,29 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
   }, [open, onClose, submitting]);
 
   async function handleSubmit(data: TradeFormState) {
-    const tradeData = formToTrade(data);
+    let tradeData = formToTrade(data);
     setSubmitting(true);
     setError("");
 
     try {
+      if (isBinancePricingEnabled(tradeData)) {
+        const quote = await fetchBinanceQuote({
+          marketType: tradeData.binanceMarketType,
+          symbol: tradeData.binanceSymbol,
+        });
+
+        if (!quote) {
+          throw new Error(INVALID_BINANCE_SYMBOL(tradeData.binanceSymbol));
+        }
+
+        if (tradeData.status === "open") {
+          tradeData = {
+            ...tradeData,
+            currentPrice: getTradeSettlementPrice(tradeData, quote),
+          };
+        }
+      }
+
       if (editingTrade) {
         const trade: Trade = {
           ...editingTrade,
@@ -89,7 +128,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
 
       onClose();
     } catch (err) {
-      setError((err as Error).message || "保存失败，请稍后重试");
+      setError((err as Error).message || SAVE_ERROR);
     } finally {
       setSubmitting(false);
     }
@@ -113,7 +152,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
           "fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-border bg-surface-1 shadow-[0_0_32px_rgba(0,0,0,0.25)] transition-transform duration-200 ease-in-out sm:w-[560px]",
           open ? "translate-x-0" : "translate-x-full"
         )}
-        aria-label="交易表单"
+        aria-label={TRADE_DRAWER_LABEL}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-3">
@@ -121,12 +160,12 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
               onClick={onClose}
               disabled={submitting}
               className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:opacity-50 lg:hidden"
-              aria-label="关闭"
+              aria-label={CLOSE_LABEL}
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
             <h2 className="text-sm font-semibold text-text-primary">
-              {isEditing ? "编辑交易" : "新增交易"}
+              {isEditing ? EDIT_TITLE : CREATE_TITLE}
             </h2>
           </div>
 
@@ -134,7 +173,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
             onClick={onClose}
             disabled={submitting}
             className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:opacity-50"
-            aria-label="关闭"
+            aria-label={CLOSE_LABEL}
           >
             <X className="h-4 w-4" />
           </button>
@@ -148,14 +187,20 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
               </div>
             )}
             <TradeForm
-            key={editingTrade?.id ?? "new"}
-            initialValues={initialValues}
-            onSubmit={(values) => {
-              void handleSubmit(values);
-            }}
-            onCancel={onClose}
-            submitLabel={submitting ? "提交中..." : isEditing ? "保存修改" : "添加交易"}
-          />
+              key={editingTrade?.id ?? "new"}
+              initialValues={initialValues}
+              onSubmit={(values) => {
+                void handleSubmit(values);
+              }}
+              onCancel={onClose}
+              submitLabel={
+                submitting
+                  ? SUBMITTING_LABEL
+                  : isEditing
+                    ? SAVE_CHANGES_LABEL
+                    : ADD_TRADE_LABEL
+              }
+            />
           </>
         )}
       </div>

@@ -32,13 +32,23 @@ interface ImportBackupRequest {
 
 type ImportRequest = ImportItemsRequest | ImportBackupRequest;
 
+function normalizeInitialCapital(value: unknown, userLabel: string): number {
+  const amount = Number(value ?? 100000);
+
+  if (!Number.isFinite(amount)) {
+    throw new Error(`${userLabel} 的本金无效`);
+  }
+
+  return Math.round(Math.max(amount, 0) * 100) / 100;
+}
+
 function normalizeSettingsByUser(source: Partial<SettingsByUser>): SettingsByUser {
   return {
     me: {
-      initialCapital: Number(source.me?.initialCapital ?? 100000),
+      initialCapital: normalizeInitialCapital(source.me?.initialCapital, "我"),
     },
     partner: {
-      initialCapital: Number(source.partner?.initialCapital ?? 100000),
+      initialCapital: normalizeInitialCapital(source.partner?.initialCapital, "女朋友"),
     },
   };
 }
@@ -60,8 +70,13 @@ export async function POST(request: Request) {
     }
 
     if (body.format === "backup-json") {
+      if (typeof body.payload !== "object" || body.payload === null) {
+        return NextResponse.json({ error: "备份文件内容无效" }, { status: 400 });
+      }
+
       const tradesByUser = {} as TradesByUser;
       const thoughtsByUser = {} as ThoughtsByUser;
+      let settingsByUser: SettingsByUser;
 
       for (const user of APP_USERS) {
         const tradesResult = jsonToTrades(
@@ -87,11 +102,20 @@ export async function POST(request: Request) {
         thoughtsByUser[user.id] = thoughtsResult.data;
       }
 
+      try {
+        settingsByUser = normalizeSettingsByUser(body.payload.settingsByUser ?? {});
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "备份文件内容无效" },
+          { status: 400 }
+        );
+      }
+
       await importBackup(
         {
           tradesByUser,
           thoughtsByUser,
-          settingsByUser: normalizeSettingsByUser(body.payload.settingsByUser ?? {}),
+          settingsByUser,
         },
         body.mode
       );

@@ -54,9 +54,16 @@ export function computePortfolioStats(trades: Trade[]): PortfolioStats {
 
   const wins = pnls.filter((item) => item.pnl.isWin);
   const losses = pnls.filter((item) => !item.pnl.isWin);
+  const unrealisedPnls = open
+    .map((trade) =>
+      trade.currentPrice != null ? computeUnrealisedPnL(trade, trade.currentPrice) : null
+    )
+    .filter((item): item is TradePnL => item !== null);
 
   const totalNetPnl = pnls.reduce((sum, item) => sum + item.pnl.net, 0);
   const totalGrossPnl = pnls.reduce((sum, item) => sum + item.pnl.gross, 0);
+  const unrealisedNetPnl = unrealisedPnls.reduce((sum, pnl) => sum + pnl.net, 0);
+  const combinedNetPnl = totalNetPnl + unrealisedNetPnl;
   const totalWins = wins.reduce((sum, item) => sum + item.pnl.net, 0);
   const totalLosses = Math.abs(
     losses.reduce((sum, item) => sum + item.pnl.net, 0)
@@ -86,6 +93,9 @@ export function computePortfolioStats(trades: Trade[]): PortfolioStats {
     closedTrades: closed.length,
     openTrades: open.length,
     winRate: pnls.length > 0 ? (wins.length / pnls.length) * 100 : 0,
+    realisedNetPnl: totalNetPnl,
+    unrealisedNetPnl,
+    combinedNetPnl,
     totalNetPnl,
     totalGrossPnl,
     avgWin,
