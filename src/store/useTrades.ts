@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { getTradePricingMode, normalizeTrade } from "@/lib/pricing";
 import type { Trade } from "@/types";
 import { SEED_TRADES } from "@/lib/seed";
 import type { AppUserId } from "./useAppUsers";
@@ -19,6 +20,9 @@ interface TradesActions {
   addTrade: (draft: Omit<Trade, "id" | "createdAt" | "updatedAt">) => Trade;
   upsertTrade: (trade: Trade) => void;
   updateTrade: (id: string, updates: Partial<Omit<Trade, "id" | "createdAt">>) => void;
+  applyLivePriceUpdates: (
+    updates: Array<{ id: string; currentPrice: number }>
+  ) => void;
   deleteTrade: (id: string) => void;
   deleteTrades: (ids: string[]) => void;
   importTrades: (trades: Trade[]) => void;
@@ -46,10 +50,44 @@ function nowIso(): string {
 }
 
 function cloneTrades(trades: Trade[]): Trade[] {
-  return trades.map((trade) => ({
-    ...trade,
-    tags: [...trade.tags],
-  }));
+  return trades.map((trade) =>
+    normalizeTrade({
+      ...trade,
+      tags: [...trade.tags],
+    })
+  );
+}
+
+function mergeIncomingTrades(
+  currentTrades: Trade[],
+  incomingTrades: Trade[]
+): Trade[] {
+  const currentById = new Map(currentTrades.map((trade) => [trade.id, trade] as const));
+
+  return cloneTrades(incomingTrades).map((incomingTrade) => {
+    const currentTrade = currentById.get(incomingTrade.id);
+
+    if (
+      currentTrade &&
+      incomingTrade.status === "open" &&
+      getTradePricingMode(incomingTrade) === "binance" &&
+      currentTrade.currentPrice != null
+    ) {
+      // Keep local live price only when server has no price or local is fresher.
+      // If server has a valid price (e.g. updated from another device), use it.
+      const serverHasPrice =
+        incomingTrade.currentPrice != null && incomingTrade.currentPrice > 0;
+
+      if (!serverHasPrice) {
+        return {
+          ...incomingTrade,
+          currentPrice: currentTrade.currentPrice,
+        };
+      }
+    }
+
+    return incomingTrade;
+  });
 }
 
 function createDefaultTradesByUser(): TradesByUser {
@@ -109,23 +147,28 @@ export const useTrades = create<TradesStore>()(
           updatedAt: now,
         };
 
-        set((state) => updateActiveUserTrades(state, (trades) => [trade, ...trades]));
-        return trade;
+        const normalizedTrade = normalizeTrade(trade);
+
+        set((state) =>
+          updateActiveUserTrades(state, (trades) => [normalizedTrade, ...trades])
+        );
+        return normalizedTrade;
       },
 
       upsertTrade(trade) {
+        const normalizedTrade = normalizeTrade(trade);
+
         set((state) =>
           updateActiveUserTrades(state, (trades) => {
-            const existingIndex = trades.findIndex((item) => item.id === trade.id);
+            const existingIndex = trades.findIndex(
+              (item) => item.id === normalizedTrade.id
+            );
             if (existingIndex === -1) {
-              return [trade, ...trades];
+              return [normalizedTrade, ...trades];
             }
 
             const nextTrades = [...trades];
-            nextTrades[existingIndex] = {
-              ...trade,
-              tags: [...trade.tags],
-            };
+            nextTrades[existingIndex] = normalizedTrade;
             return nextTrades;
           })
         );
@@ -137,6 +180,28 @@ export const useTrades = create<TradesStore>()(
             trades.map((trade) =>
               trade.id === id ? { ...trade, ...updates, id, updatedAt: nowIso() } : trade
             )
+          )
+        );
+      },
+
+      applyLivePriceUpdates(updates) {
+        if (updates.length === 0) return;
+
+        const updatesById = new Map(
+          updates.map((update) => [update.id, update.currentPrice] as const)
+        );
+
+        set((state) =>
+          updateActiveUserTrades(state, (trades) =>
+            trades.map((trade) => {
+              const currentPrice = updatesById.get(trade.id);
+              if (currentPrice == null) return trade;
+
+              return {
+                ...trade,
+                currentPrice,
+              };
+            })
           )
         );
       },
@@ -167,10 +232,20 @@ export const useTrades = create<TradesStore>()(
       },
 
       replaceAllTradesByUser(tradesByUser) {
-        const normalized = normalizeTradesByUser(tradesByUser);
-        set({
-          tradesByUser: normalized,
-          trades: getCurrentUserTrades(normalized),
+        set((state) => {
+          const normalizedIncoming = normalizeTradesByUser(tradesByUser);
+          const mergedByUser: TradesByUser = {
+            me: mergeIncomingTrades(state.tradesByUser.me ?? [], normalizedIncoming.me),
+            partner: mergeIncomingTrades(
+              state.tradesByUser.partner ?? [],
+              normalizedIncoming.partner
+            ),
+          };
+
+          return {
+            tradesByUser: mergedByUser,
+            trades: getCurrentUserTrades(mergedByUser),
+          };
         });
       },
 

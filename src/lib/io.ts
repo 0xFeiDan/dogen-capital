@@ -6,14 +6,17 @@
  */
 
 import type {
+  BinanceMarketType,
   Trade,
   Thought,
   TradeDirection,
+  TradePricingMode,
   TradeStatus,
   AssetClass,
   Currency,
   ThoughtCategory,
 } from "@/types";
+import { normalizeBinanceSymbol, normalizeTrade } from "@/lib/pricing";
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
@@ -147,6 +150,9 @@ export const TRADE_CSV_HEADERS = [
   "id",
   "ticker",
   "name",
+  "pricingMode",
+  "binanceMarketType",
+  "binanceSymbol",
   "direction",
   "status",
   "assetClass",
@@ -186,6 +192,9 @@ export function tradesToCSV(trades: Trade[]): string {
       t.id,
       t.ticker,
       t.name ?? "",
+      t.pricingMode ?? "manual",
+      t.binanceMarketType ?? "",
+      t.binanceSymbol ?? "",
       t.direction,
       t.status,
       t.assetClass,
@@ -280,6 +289,12 @@ export function csvToTrades(text: string): ParseResult<Trade> {
     const ticker = get("ticker");
     const direction = get("direction");
     const status = get("status");
+    const pricingModeRaw = get("pricingMode") || get("pricingmode");
+    const pricingMode: TradePricingMode =
+      pricingModeRaw === "binance" ? "binance" : "manual";
+    const binanceMarketTypeRaw =
+      get("binanceMarketType") || get("binancemarkettype");
+    const binanceSymbolRaw = get("binanceSymbol") || get("binancesymbol");
 
     if (!ticker) {
       errors.push(`Row ${r + 1}: missing ticker — skipped`);
@@ -346,15 +361,24 @@ export function csvToTrades(text: string): ParseResult<Trade> {
         continue;
       }
     }
-    if (status === "open" && currentPrice === null) {
-      errors.push(`Row ${r + 1} (${ticker}): invalid currentPrice - skipped`);
-      continue;
-    }
 
-    const trade: Trade = {
+    const trade = normalizeTrade({
       id: get("id") || `imp_${Date.now()}_${r}`,
       ticker,
       name: get("name") || undefined,
+      pricingMode,
+      binanceMarketType:
+        pricingMode === "binance" &&
+        (binanceMarketTypeRaw === "spot" ||
+          binanceMarketTypeRaw === "usdm-futures")
+          ? (binanceMarketTypeRaw as BinanceMarketType)
+          : pricingMode === "binance"
+          ? "spot"
+          : undefined,
+      binanceSymbol:
+        pricingMode === "binance"
+          ? normalizeBinanceSymbol(binanceSymbolRaw)
+          : undefined,
       direction: direction as TradeDirection,
       status: status as TradeStatus,
       assetClass: (ASSET_CLASSES.includes(assetClassRaw as AssetClass)
@@ -380,7 +404,7 @@ export function csvToTrades(text: string): ParseResult<Trade> {
         get("createdAt") || get("createdat") || new Date().toISOString(),
       updatedAt:
         get("updatedAt") || get("updatedat") || new Date().toISOString(),
-    };
+    });
 
     // Clean up undefined optional fields
     if (trade.exitDate == null) delete trade.exitDate;
@@ -410,6 +434,13 @@ function validateTradeObject(
   const ticker = String(o.ticker ?? "").trim();
   const direction = String(o.direction ?? "").trim();
   const status = String(o.status ?? "").trim();
+  const pricingModeRaw = String(o.pricingMode ?? "manual").trim();
+  const pricingMode: TradePricingMode =
+    pricingModeRaw === "binance" ? "binance" : "manual";
+  const binanceMarketTypeRaw = String(o.binanceMarketType ?? "").trim();
+  const binanceSymbol = normalizeBinanceSymbol(
+    o.binanceSymbol ? String(o.binanceSymbol) : undefined
+  );
 
   if (!ticker) {
     return {
@@ -496,17 +527,20 @@ function validateTradeObject(
     }
   }
 
-  if (status === "open" && currentPrice === null) {
-    return {
-      trade: null,
-      error: `Item ${rowNum} (${ticker}): invalid currentPrice - skipped`,
-    };
-  }
-
-  const trade: Trade = {
+  const trade = normalizeTrade({
     id: String(o.id ?? `imp_${Date.now()}_${rowNum}`),
     ticker,
     name: o.name ? String(o.name) : undefined,
+    pricingMode,
+    binanceMarketType:
+      pricingMode === "binance" &&
+      (binanceMarketTypeRaw === "spot" ||
+        binanceMarketTypeRaw === "usdm-futures")
+        ? (binanceMarketTypeRaw as BinanceMarketType)
+        : pricingMode === "binance"
+        ? "spot"
+        : undefined,
+    binanceSymbol: pricingMode === "binance" ? binanceSymbol : undefined,
     direction: direction as TradeDirection,
     status: status as TradeStatus,
     assetClass: (ASSET_CLASSES.includes(assetClassRaw as AssetClass)
@@ -527,7 +561,7 @@ function validateTradeObject(
     notes: o.notes ? String(o.notes) : undefined,
     createdAt: String(o.createdAt ?? new Date().toISOString()),
     updatedAt: String(o.updatedAt ?? new Date().toISOString()),
-  };
+  });
 
   return { trade, error: null };
 }

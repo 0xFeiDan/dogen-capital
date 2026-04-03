@@ -1,5 +1,6 @@
 import type { Thought, Trade } from "@/types";
 import { db } from "@/lib/db";
+import { normalizeTrade } from "@/lib/pricing";
 import { APP_USERS, type AppUserId, type AppUserProfile, isAppUserId } from "@/lib/users";
 
 const DEFAULT_INITIAL_CAPITAL = 100000;
@@ -22,6 +23,9 @@ async function ensureDatabaseSchema() {
       "profileId" TEXT NOT NULL,
       "ticker" TEXT NOT NULL,
       "name" TEXT,
+      "pricingMode" TEXT,
+      "binanceMarketType" TEXT,
+      "binanceSymbol" TEXT,
       "direction" TEXT NOT NULL,
       "status" TEXT NOT NULL,
       "assetClass" TEXT NOT NULL,
@@ -98,6 +102,29 @@ async function ensureDatabaseSchema() {
     CREATE INDEX IF NOT EXISTS "ThoughtRecord_profileId_updatedAt_idx"
     ON "ThoughtRecord" ("profileId", "updatedAt")
   `);
+
+  const tradeColumns = await db.$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA table_info("TradeRecord")`
+  );
+  const tradeColumnNames = new Set(tradeColumns.map((column) => column.name));
+
+  if (!tradeColumnNames.has("pricingMode")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "TradeRecord" ADD COLUMN "pricingMode" TEXT`
+    );
+  }
+
+  if (!tradeColumnNames.has("binanceMarketType")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "TradeRecord" ADD COLUMN "binanceMarketType" TEXT`
+    );
+  }
+
+  if (!tradeColumnNames.has("binanceSymbol")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "TradeRecord" ADD COLUMN "binanceSymbol" TEXT`
+    );
+  }
 }
 
 async function ensureProfiles() {
@@ -164,7 +191,19 @@ function deserializeTags(raw: string): string[] {
 }
 
 function normalizeCapital(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_INITIAL_CAPITAL;
+  }
+
   return Math.round(Math.max(value, 0) * 100) / 100;
+}
+
+function normalizeCapitalForWrite(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error("本金数据无效");
+  }
+
+  return normalizeCapital(value);
 }
 
 function toScopedId(profileId: AppUserId, id: string): string {
@@ -225,6 +264,9 @@ function toTrade(record: {
   profileId: string;
   ticker: string;
   name: string | null;
+  pricingMode: string | null;
+  binanceMarketType: string | null;
+  binanceSymbol: string | null;
   direction: string;
   status: string;
   assetClass: string;
@@ -246,10 +288,18 @@ function toTrade(record: {
     ? fromScopedId(record.profileId, record.id)
     : record.id;
 
-  return {
+  return normalizeTrade({
     id: logicalId,
     ticker: record.ticker,
     name: record.name ?? undefined,
+    pricingMode:
+      record.pricingMode === "binance" ? "binance" : "manual",
+    binanceMarketType:
+      record.binanceMarketType === "spot" ||
+      record.binanceMarketType === "usdm-futures"
+        ? record.binanceMarketType
+        : undefined,
+    binanceSymbol: record.binanceSymbol ?? undefined,
     direction: record.direction as Trade["direction"],
     status: record.status as Trade["status"],
     assetClass: record.assetClass as Trade["assetClass"],
@@ -266,7 +316,7 @@ function toTrade(record: {
     notes: record.notes ?? undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  };
+  });
 }
 
 function toThought(record: {
@@ -362,35 +412,40 @@ export async function getServerSnapshot(): Promise<ServerSnapshot> {
 export async function upsertTrade(profileId: AppUserId, trade: Trade): Promise<Trade> {
   await ensureServerSetup();
 
-  const scopedId = toScopedId(profileId, trade.id);
+  const normalizedTrade = normalizeTrade(trade);
+
+  const scopedId = toScopedId(profileId, normalizedTrade.id);
   const existing = await db.tradeRecord.findFirst({
     where: {
       profileId,
-      id: { in: [scopedId, trade.id] },
+      id: { in: [scopedId, normalizedTrade.id] },
     },
   });
 
   const payload = {
     id: scopedId,
     profileId,
-    ticker: trade.ticker,
-    name: trade.name ?? null,
-    direction: trade.direction,
-    status: trade.status,
-    assetClass: trade.assetClass,
-    currency: trade.currency,
-    entryDate: trade.entryDate,
-    exitDate: trade.exitDate ?? null,
-    entryPrice: trade.entryPrice,
-    exitPrice: trade.exitPrice ?? null,
-    currentPrice: trade.currentPrice ?? null,
-    quantity: trade.quantity,
-    fees: trade.fees,
-    setupType: trade.setupType ?? null,
-    tagsJson: serializeTags(trade.tags),
-    notes: trade.notes ?? null,
-    createdAt: trade.createdAt,
-    updatedAt: trade.updatedAt,
+    ticker: normalizedTrade.ticker,
+    name: normalizedTrade.name ?? null,
+    pricingMode: normalizedTrade.pricingMode,
+    binanceMarketType: normalizedTrade.binanceMarketType ?? null,
+    binanceSymbol: normalizedTrade.binanceSymbol ?? null,
+    direction: normalizedTrade.direction,
+    status: normalizedTrade.status,
+    assetClass: normalizedTrade.assetClass,
+    currency: normalizedTrade.currency,
+    entryDate: normalizedTrade.entryDate,
+    exitDate: normalizedTrade.exitDate ?? null,
+    entryPrice: normalizedTrade.entryPrice,
+    exitPrice: normalizedTrade.exitPrice ?? null,
+    currentPrice: normalizedTrade.currentPrice ?? null,
+    quantity: normalizedTrade.quantity,
+    fees: normalizedTrade.fees,
+    setupType: normalizedTrade.setupType ?? null,
+    tagsJson: serializeTags(normalizedTrade.tags),
+    notes: normalizedTrade.notes ?? null,
+    createdAt: normalizedTrade.createdAt,
+    updatedAt: normalizedTrade.updatedAt,
   };
 
   const record = existing
@@ -483,14 +538,16 @@ export async function deleteThought(profileId: AppUserId, thoughtId: string) {
 export async function updateInitialCapital(profileId: AppUserId, initialCapital: number) {
   await ensureServerSetup();
 
+  const normalizedCapital = normalizeCapitalForWrite(initialCapital);
+
   const record = await db.portfolioSetting.upsert({
     where: { profileId },
     update: {
-      initialCapital: normalizeCapital(initialCapital),
+      initialCapital: normalizedCapital,
     },
     create: {
       profileId,
-      initialCapital: normalizeCapital(initialCapital),
+      initialCapital: normalizedCapital,
     },
   });
 
@@ -499,34 +556,104 @@ export async function updateInitialCapital(profileId: AppUserId, initialCapital:
   };
 }
 
+export async function updateTradeCurrentPrices(
+  profileId: AppUserId,
+  updates: Array<{ id: string; currentPrice: number }>
+) {
+  await ensureServerSetup();
+
+  const normalizedUpdates = updates.filter(
+    (update) =>
+      typeof update.id === "string" &&
+      update.id.length > 0 &&
+      Number.isFinite(update.currentPrice) &&
+      update.currentPrice > 0
+  );
+
+  if (normalizedUpdates.length === 0) {
+    return 0;
+  }
+
+  return db.$transaction(async (tx) => {
+    const candidateIds = Array.from(
+      new Set(
+        normalizedUpdates.flatMap((update) => [
+          update.id,
+          toScopedId(profileId, update.id),
+        ])
+      )
+    );
+
+    const existingRecords = await tx.tradeRecord.findMany({
+      where: {
+        profileId,
+        status: "open",
+        id: { in: candidateIds },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const recordIdByLogicalId = new Map<string, string>();
+    existingRecords.forEach((record) => {
+      recordIdByLogicalId.set(fromScopedId(profileId, record.id), record.id);
+    });
+
+    let updatedCount = 0;
+
+    for (const update of normalizedUpdates) {
+      const recordId = recordIdByLogicalId.get(update.id);
+      if (!recordId) continue;
+
+      await tx.tradeRecord.update({
+        where: { id: recordId },
+        data: {
+          currentPrice: update.currentPrice,
+        },
+      });
+      updatedCount += 1;
+    }
+
+    return updatedCount;
+  });
+}
+
 async function replaceProfileTrades(profileId: AppUserId, trades: Trade[]) {
   await db.$transaction(async (tx) => {
     await tx.tradeRecord.deleteMany({ where: { profileId } });
 
     if (trades.length > 0) {
       await tx.tradeRecord.createMany({
-        data: trades.map((trade) => ({
-          id: toScopedId(profileId, trade.id),
-          profileId,
-          ticker: trade.ticker,
-          name: trade.name ?? null,
-          direction: trade.direction,
-          status: trade.status,
-          assetClass: trade.assetClass,
-          currency: trade.currency,
-          entryDate: trade.entryDate,
-          exitDate: trade.exitDate ?? null,
-          entryPrice: trade.entryPrice,
-          exitPrice: trade.exitPrice ?? null,
-          currentPrice: trade.currentPrice ?? null,
-          quantity: trade.quantity,
-          fees: trade.fees,
-          setupType: trade.setupType ?? null,
-          tagsJson: serializeTags(trade.tags),
-          notes: trade.notes ?? null,
-          createdAt: trade.createdAt,
-          updatedAt: trade.updatedAt,
-        })),
+        data: trades.map((trade) => {
+          const normalizedTrade = normalizeTrade(trade);
+
+          return {
+            id: toScopedId(profileId, normalizedTrade.id),
+            profileId,
+            ticker: normalizedTrade.ticker,
+            name: normalizedTrade.name ?? null,
+            pricingMode: normalizedTrade.pricingMode,
+            binanceMarketType: normalizedTrade.binanceMarketType ?? null,
+            binanceSymbol: normalizedTrade.binanceSymbol ?? null,
+            direction: normalizedTrade.direction,
+            status: normalizedTrade.status,
+            assetClass: normalizedTrade.assetClass,
+            currency: normalizedTrade.currency,
+            entryDate: normalizedTrade.entryDate,
+            exitDate: normalizedTrade.exitDate ?? null,
+            entryPrice: normalizedTrade.entryPrice,
+            exitPrice: normalizedTrade.exitPrice ?? null,
+            currentPrice: normalizedTrade.currentPrice ?? null,
+            quantity: normalizedTrade.quantity,
+            fees: normalizedTrade.fees,
+            setupType: normalizedTrade.setupType ?? null,
+            tagsJson: serializeTags(normalizedTrade.tags),
+            notes: normalizedTrade.notes ?? null,
+            createdAt: normalizedTrade.createdAt,
+            updatedAt: normalizedTrade.updatedAt,
+          };
+        }),
       });
     }
   });

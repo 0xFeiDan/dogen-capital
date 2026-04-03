@@ -22,6 +22,9 @@ model TradeRecord {
   profileId    String
   ticker       String
   name         String?
+  pricingMode  String?
+  binanceMarketType String?
+  binanceSymbol String?
   direction    String
   status       String
   assetClass   String

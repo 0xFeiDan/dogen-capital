@@ -7,6 +7,11 @@ import { Textarea } from "@/components/ui/Textarea";
 import { TagInput } from "@/components/ui/TagInput";
 import { Button } from "@/components/ui/Button";
 import {
+  getTradePricingMode,
+  normalizeBinanceSymbol,
+  suggestBinanceSymbol,
+} from "@/lib/pricing";
+import {
   cn,
   formatCurrency,
   normalizeDateTimeInputValue,
@@ -14,15 +19,20 @@ import {
 } from "@/lib/utils";
 import type {
   AssetClass,
+  BinanceMarketType,
   Currency,
   Trade,
   TradeDirection,
+  TradePricingMode,
   TradeStatus,
 } from "@/types";
 
 export interface TradeFormState {
   ticker: string;
   name: string;
+  pricingMode: TradePricingMode;
+  binanceMarketType: BinanceMarketType;
+  binanceSymbol: string;
   assetClass: AssetClass;
   direction: TradeDirection;
   status: TradeStatus;
@@ -46,11 +56,16 @@ export interface TradeFormErrors {
   quantity?: string;
   exitDate?: string;
   exitPrice?: string;
+  currentPrice?: string;
+  binanceSymbol?: string;
 }
 
 export const EMPTY_FORM: TradeFormState = {
   ticker: "",
   name: "",
+  pricingMode: "manual",
+  binanceMarketType: "spot",
+  binanceSymbol: "",
   assetClass: "stock",
   direction: "long",
   status: "closed",
@@ -71,6 +86,9 @@ export function tradeToForm(trade: Trade): TradeFormState {
   return {
     ticker: trade.ticker,
     name: trade.name ?? "",
+    pricingMode: getTradePricingMode(trade),
+    binanceMarketType: trade.binanceMarketType ?? "spot",
+    binanceSymbol: trade.binanceSymbol ?? "",
     assetClass: trade.assetClass,
     direction: trade.direction,
     status: trade.status,
@@ -94,10 +112,16 @@ export function formToTrade(
   const entryPrice = parseFloat(form.entryPrice);
   const exitPrice = parseFloat(form.exitPrice);
   const currentPrice = parseFloat(form.currentPrice);
+  const pricingMode = form.pricingMode;
+  const binanceSymbol = normalizeBinanceSymbol(form.binanceSymbol);
 
   return {
     ticker: form.ticker.trim().toUpperCase(),
     name: form.name.trim() || undefined,
+    pricingMode,
+    binanceMarketType:
+      pricingMode === "binance" ? form.binanceMarketType : undefined,
+    binanceSymbol: pricingMode === "binance" ? binanceSymbol : undefined,
     assetClass: form.assetClass,
     direction: form.direction,
     status: form.status,
@@ -108,9 +132,12 @@ export function formToTrade(
         ? normalizeDateTimeInputValue(form.exitDate)
         : undefined,
     entryPrice,
-    exitPrice: form.status === "closed" && !Number.isNaN(exitPrice) ? exitPrice : undefined,
+    exitPrice:
+      form.status === "closed" && !Number.isNaN(exitPrice) ? exitPrice : undefined,
     currentPrice:
-      form.status === "open" && !Number.isNaN(currentPrice) && currentPrice > 0
+      form.status === "open" &&
+      !Number.isNaN(currentPrice) &&
+      currentPrice > 0
         ? currentPrice
         : undefined,
     quantity: parseFloat(form.quantity),
@@ -135,6 +162,19 @@ function validate(form: TradeFormState): TradeFormErrors {
   const quantity = parseFloat(form.quantity);
   if (Number.isNaN(quantity) || quantity <= 0) {
     errors.quantity = "必须大于 0";
+  }
+
+  if (form.pricingMode === "binance") {
+    if (!normalizeBinanceSymbol(form.binanceSymbol)) {
+      errors.binanceSymbol = "请输入币安代码";
+    }
+  }
+
+  if (form.status === "open" && form.pricingMode === "manual" && form.currentPrice) {
+    const currentPrice = parseFloat(form.currentPrice);
+    if (Number.isNaN(currentPrice) || currentPrice <= 0) {
+      errors.currentPrice = "当前价格必须大于 0";
+    }
   }
 
   if (form.status === "closed") {
@@ -176,7 +216,21 @@ function PnLPreview({ form }: { form: TradeFormState }) {
     form.status === "closed" ? form.exitPrice : form.currentPrice;
   const comparePrice = parseFloat(comparePriceString);
 
-  if (Number.isNaN(comparePrice) || comparePrice <= 0) return null;
+  if (Number.isNaN(comparePrice) || comparePrice <= 0) {
+    if (form.status === "open" && form.pricingMode === "binance") {
+      return (
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3.5 text-xs text-text-secondary">
+          <p className="font-medium text-text-primary">实时价格将在保存后自动刷新</p>
+          <p className="mt-1">
+            币安模式会按更真实的可成交价结算：多头取买一盘口的卖出价格
+            `bid1`，空头取卖一盘口的买回价格 `ask1`。
+          </p>
+        </div>
+      );
+    }
+
+    return null;
+  }
 
   const multiplier = isShort ? -1 : 1;
   const gross = multiplier * (comparePrice - entryPrice) * quantity;
@@ -191,14 +245,14 @@ function PnLPreview({ form }: { form: TradeFormState }) {
         isPositive ? "bg-profit/5 border-profit/20" : "bg-loss/5 border-loss/20"
       )}
     >
-      <p className="text-text-muted uppercase tracking-wider text-2xs font-medium mb-2.5">
+      <p className="mb-2.5 text-2xs font-medium uppercase tracking-wider text-text-muted">
         盈亏预览（{form.status === "open" ? "未实现" : "已实现"}）
       </p>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <div className="flex justify-between">
           <span className="text-text-muted">入场市值</span>
-          <span className="text-text-secondary tabular-nums">
+          <span className="tabular-nums text-text-secondary">
             {formatCurrency(entryPrice * quantity)}
           </span>
         </div>
@@ -207,7 +261,7 @@ function PnLPreview({ form }: { form: TradeFormState }) {
           <span className="text-text-muted">
             {form.status === "closed" ? "出场市值" : "当前市值"}
           </span>
-          <span className="text-text-secondary tabular-nums">
+          <span className="tabular-nums text-text-secondary">
             {formatCurrency(comparePrice * quantity)}
           </span>
         </div>
@@ -222,18 +276,18 @@ function PnLPreview({ form }: { form: TradeFormState }) {
 
         <div className="flex justify-between">
           <span className="text-text-muted">手续费</span>
-          <span className="text-text-secondary tabular-nums">
+          <span className="tabular-nums text-text-secondary">
             -{formatCurrency(fees)}
           </span>
         </div>
       </div>
 
-      <div className="mt-2.5 pt-2.5 border-t border-border flex items-center justify-between">
+      <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
         <span className="font-medium text-text-primary">净盈亏</span>
         <div className="text-right">
           <span
             className={cn(
-              "font-semibold tabular-nums text-sm",
+              "text-sm font-semibold tabular-nums",
               isPositive ? "text-profit" : "text-loss"
             )}
           >
@@ -269,12 +323,12 @@ function Segment<T extends string>({
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <span className="text-xs font-medium text-text-secondary uppercase tracking-wide">
+        <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
           {label}
         </span>
       )}
 
-      <div className="flex rounded-lg bg-surface-2 border border-border p-0.5 h-9">
+      <div className="flex h-9 rounded-lg border border-border bg-surface-2 p-0.5">
         {options.map((option) => (
           <button
             key={option.value}
@@ -319,6 +373,39 @@ export function TradeForm({
       return next;
     });
 
+  function setTicker(value: string) {
+    setForm((prev) => {
+      const ticker = value.toUpperCase();
+      const next: TradeFormState = {
+        ...prev,
+        ticker,
+      };
+
+      if (prev.pricingMode === "binance" && !prev.binanceSymbol) {
+        next.binanceSymbol = suggestBinanceSymbol(ticker);
+      }
+
+      if (submitted) setErrors(validate(next));
+      return next;
+    });
+  }
+
+  function setPricingMode(value: TradePricingMode) {
+    setForm((prev) => {
+      const next: TradeFormState = {
+        ...prev,
+        pricingMode: value,
+      };
+
+      if (value === "binance" && !prev.binanceSymbol) {
+        next.binanceSymbol = suggestBinanceSymbol(prev.ticker);
+      }
+
+      if (submitted) setErrors(validate(next));
+      return next;
+    });
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const nextErrors = validate(form);
@@ -331,16 +418,17 @@ export function TradeForm({
   }
 
   const isClosed = form.status === "closed";
+  const isBinanceMode = form.pricingMode === "binance";
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+    <form onSubmit={handleSubmit} className="flex h-full flex-col">
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="代码 *"
             value={form.ticker}
-            onChange={(event) => set("ticker")(event.target.value.toUpperCase())}
-            placeholder="如 NVDA"
+            onChange={(event) => setTicker(event.target.value)}
+            placeholder="如 BTC / META / XAG"
             error={errors.ticker}
             className="uppercase"
           />
@@ -351,6 +439,58 @@ export function TradeForm({
             placeholder="公司 / 资产名称"
           />
         </div>
+
+        <Segment
+          label="价格模式"
+          value={form.pricingMode}
+          onChange={setPricingMode}
+          options={[
+            {
+              value: "manual",
+              label: "手动模式",
+              activeClass: "bg-surface-4 text-text-primary",
+            },
+            {
+              value: "binance",
+              label: "币安模式",
+              activeClass: "bg-accent/15 text-accent",
+            },
+          ]}
+        />
+
+        {isBinanceMode && (
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface-2/40 p-3">
+            <Select
+              label="币安市场 *"
+              value={form.binanceMarketType}
+              onChange={(value) => set("binanceMarketType")(value)}
+              options={[
+                { value: "spot", label: "现货 Spot" },
+                { value: "usdm-futures", label: "U 本位合约" },
+              ]}
+            />
+            <Input
+              label="币安代码 *"
+              value={form.binanceSymbol}
+              onChange={(event) => set("binanceSymbol")(event.target.value.toUpperCase())}
+              placeholder="如 BTCUSDT / XAGUSDT"
+              hint="用于匹配币安盘口价格，展示代码仍然使用左侧的“代码”"
+              error={errors.binanceSymbol}
+              className="uppercase"
+            />
+            {form.status === "open" && (
+              <div className="col-span-2">
+                <Input
+                  label="当前价格"
+                  value={form.currentPrice}
+                  placeholder="保存后自动刷新"
+                  hint="多头按 bid1 结算，空头按 ask1 结算"
+                  disabled
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Select
@@ -463,6 +603,16 @@ export function TradeForm({
               step="any"
               error={errors.exitPrice}
             />
+          ) : isBinanceMode ? (
+            <Input
+              type="number"
+              label="当前价格"
+              value={form.currentPrice}
+              placeholder="保存后自动刷新"
+              min="0"
+              step="any"
+              disabled
+            />
           ) : (
             <Input
               type="number"
@@ -472,6 +622,7 @@ export function TradeForm({
               placeholder="用于计算未实现盈亏"
               min="0"
               step="any"
+              error={errors.currentPrice}
             />
           )}
         </div>
@@ -516,14 +667,14 @@ export function TradeForm({
           label="备注"
           value={form.notes}
           onChange={(event) => set("notes")(event.target.value)}
-          placeholder="交易理由、观察、经验教训"
+          placeholder="交易理由、观察、经验总结"
           className="min-h-[80px]"
         />
 
         <PnLPreview form={form} />
       </div>
 
-      <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border bg-surface-1">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface-1 px-5 py-4">
         <Button type="button" variant="ghost" onClick={onCancel}>
           取消
         </Button>

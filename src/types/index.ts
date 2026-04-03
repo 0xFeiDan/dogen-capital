@@ -2,6 +2,8 @@
 
 export type TradeDirection = "long" | "short";
 export type TradeStatus = "open" | "closed";
+export type TradePricingMode = "manual" | "binance";
+export type BinanceMarketType = "spot" | "usdm-futures";
 export type AssetClass =
   | "stock"
   | "etf"
@@ -25,6 +27,9 @@ export interface Trade {
   id: string;
   ticker: string;
   name?: string;
+  pricingMode?: TradePricingMode;
+  binanceMarketType?: BinanceMarketType;
+  binanceSymbol?: string;
   direction: TradeDirection;
   status: TradeStatus;
   assetClass: AssetClass;
