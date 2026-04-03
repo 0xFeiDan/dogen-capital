@@ -172,6 +172,22 @@ export async function updateTradeOnServer(profileId: AppUserId, trade: Trade): P
   return data.trade;
 }
 
+export async function updateTradeLivePricesOnServer(
+  profileId: AppUserId,
+  updates: Array<{ id: string; currentPrice: number }>
+) {
+  const response = await fetch("/api/data/trades/live-prices", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profileId, updates }),
+  });
+
+  await parseJsonResponse<{ ok: true; count: number }>(response);
+}
+
 export async function deleteTradeFromServer(profileId: AppUserId, tradeId: string) {
   const response = await fetch(`/api/data/trades/${tradeId}?profileId=${profileId}`, {
     method: "DELETE",
