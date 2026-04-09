@@ -149,7 +149,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
 
       <div
         className={cn(
-          "fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-border bg-surface-1 shadow-[0_0_32px_rgba(0,0,0,0.25)] transition-transform duration-200 ease-in-out sm:w-[560px]",
+          "fixed right-0 top-0 z-40 flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden border-l border-border bg-surface-1 shadow-[0_0_32px_rgba(0,0,0,0.25)] transition-transform duration-200 ease-in-out sm:w-[560px]",
           open ? "translate-x-0" : "translate-x-full"
         )}
         aria-label={TRADE_DRAWER_LABEL}
@@ -180,15 +180,16 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
         </div>
 
         {open && (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col">
             {error && (
-              <div className="mx-5 mt-3 rounded-lg border border-loss/20 bg-loss/10 px-3 py-2 text-xs text-loss">
+              <div className="mx-5 mt-3 shrink-0 rounded-lg border border-loss/20 bg-loss/10 px-3 py-2 text-xs text-loss">
                 {error}
               </div>
             )}
             <TradeForm
               key={editingTrade?.id ?? "new"}
               initialValues={initialValues}
+              className="min-h-0 flex-1"
               onSubmit={(values) => {
                 void handleSubmit(values);
               }}
@@ -201,7 +202,7 @@ export function TradeDrawer({ open, onClose, editingTrade }: TradeDrawerProps) {
                     : ADD_TRADE_LABEL
               }
             />
-          </>
+          </div>
         )}
       </div>
     </>

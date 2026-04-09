@@ -354,6 +354,7 @@ interface TradeFormProps {
   onSubmit: (data: TradeFormState) => void;
   onCancel: () => void;
   submitLabel?: string;
+  className?: string;
 }
 
 export function TradeForm({
@@ -361,6 +362,7 @@ export function TradeForm({
   onSubmit,
   onCancel,
   submitLabel = "保存交易",
+  className,
 }: TradeFormProps) {
   const [form, setForm] = useState<TradeFormState>(initialValues);
   const [errors, setErrors] = useState<TradeFormErrors>({});
@@ -421,9 +423,12 @@ export function TradeForm({
   const isBinanceMode = form.pricingMode === "binance";
 
   return (
-    <form onSubmit={handleSubmit} className="flex h-full flex-col">
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        <div className="grid grid-cols-2 gap-3">
+    <form
+      onSubmit={handleSubmit}
+      className={cn("flex min-h-0 flex-1 flex-col", className)}
+    >
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 pb-8 overscroll-contain">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="代码 *"
             value={form.ticker}
@@ -459,7 +464,7 @@ export function TradeForm({
         />
 
         {isBinanceMode && (
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface-2/40 p-3">
+          <div className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-surface-2/40 p-3 sm:grid-cols-2">
             <Select
               label="币安市场 *"
               value={form.binanceMarketType}
@@ -479,7 +484,7 @@ export function TradeForm({
               className="uppercase"
             />
             {form.status === "open" && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Input
                   label="当前价格"
                   value={form.currentPrice}
@@ -492,7 +497,7 @@ export function TradeForm({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
             label="资产类别 *"
             value={form.assetClass}
@@ -522,7 +527,7 @@ export function TradeForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Segment
             label="方向"
             value={form.direction}
@@ -560,7 +565,7 @@ export function TradeForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="datetime-local"
             label="入场时间 *"
@@ -577,11 +582,11 @@ export function TradeForm({
               error={errors.exitDate}
             />
           ) : (
-            <div />
+            <div className="hidden sm:block" />
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="number"
             label="入场价 *"
@@ -627,7 +632,7 @@ export function TradeForm({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="number"
             label="数量 *"
@@ -674,7 +679,10 @@ export function TradeForm({
         <PnLPreview form={form} />
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface-1 px-5 py-4">
+      <div
+        className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface-1 px-5 py-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+      >
         <Button type="button" variant="ghost" onClick={onCancel}>
           取消
         </Button>
