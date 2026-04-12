@@ -26,6 +26,32 @@ export function formatCurrency(
   return new Intl.NumberFormat("en-US", options).format(value);
 }
 
+function getPriceFractionDigits(value: number): number {
+  const abs = Math.abs(value);
+
+  if (!Number.isFinite(abs) || abs === 0) {
+    return 2;
+  }
+
+  if (abs >= 1) {
+    return 2;
+  }
+
+  const leadingZeros = Math.max(0, Math.ceil(-Math.log10(abs)) - 1);
+  return Math.min(8, Math.max(2, leadingZeros + 4));
+}
+
+export function formatPrice(value: number, currency = "USD"): string {
+  const fractionDigits = getPriceFractionDigits(value);
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: fractionDigits,
+  }).format(value);
+}
+
 export function formatPercent(value: number, decimals = 2): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(decimals)}%`;

@@ -14,6 +14,7 @@ import {
   formatCurrency,
   formatDateTime,
   formatHoldingDuration,
+  formatPrice,
   getHoldingDurationMs,
   getPnlClass,
 } from "@/lib/utils";
@@ -209,16 +210,16 @@ function TradeRow({
 
       <td className="hidden whitespace-nowrap px-4 py-4 text-center xl:table-cell">
         <p className="tabular-nums text-xs text-text-secondary">
-          {formatCurrency(trade.entryPrice, trade.currency)}
+          {formatPrice(trade.entryPrice, trade.currency)}
         </p>
       </td>
 
       <td className="hidden whitespace-nowrap px-4 py-4 text-center xl:table-cell">
         <p className="tabular-nums text-xs text-text-secondary">
           {trade.exitPrice
-            ? formatCurrency(trade.exitPrice, trade.currency)
+            ? formatPrice(trade.exitPrice, trade.currency)
             : isOpen && trade.currentPrice != null
-            ? formatCurrency(trade.currentPrice, trade.currency)
+            ? formatPrice(trade.currentPrice, trade.currency)
             : "--"}
         </p>
         {isOpen && trade.currentPrice != null && (
