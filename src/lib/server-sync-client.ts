@@ -2,6 +2,7 @@
 
 import { triggerDownload } from "@/lib/io";
 import type {
+  DcaByUser,
   ServerBackupPayload,
   ServerSnapshot,
   SettingsByUser,
@@ -10,10 +11,11 @@ import type {
 } from "@/lib/server-data";
 import type { AppUserId } from "@/lib/users";
 import { useAppUsers } from "@/store/useAppUsers";
+import { useDcaEntries } from "@/store/useDcaEntries";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
-import type { Thought, Trade } from "@/types";
+import type { DcaEntry, Thought, Trade } from "@/types";
 
 const DEFAULT_INITIAL_CAPITAL = 100000;
 
@@ -66,17 +68,20 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 export function applyServerSnapshot(snapshot: ServerSnapshot) {
   useTrades.getState().replaceAllTradesByUser(snapshot.tradesByUser);
   useThoughts.getState().replaceAllThoughtsByUser(snapshot.thoughtsByUser);
+  useDcaEntries.getState().replaceAllDcaEntriesByUser(snapshot.dcaByUser);
   usePortfolioSettings.getState().replaceAllSettingsByUser(snapshot.settingsByUser);
 }
 
 function getLocalBackupPayload(): {
   tradesByUser: TradesByUser;
   thoughtsByUser: ThoughtsByUser;
+  dcaByUser: DcaByUser;
   settingsByUser: SettingsByUser;
 } {
   return {
     tradesByUser: useTrades.getState().tradesByUser,
     thoughtsByUser: useThoughts.getState().thoughtsByUser,
+    dcaByUser: useDcaEntries.getState().dcaEntriesByUser,
     settingsByUser: usePortfolioSettings.getState().settingsByUser,
   };
 }
@@ -84,11 +89,13 @@ function getLocalBackupPayload(): {
 function hasMeaningfulLocalData(payload: {
   tradesByUser: TradesByUser;
   thoughtsByUser: ThoughtsByUser;
+  dcaByUser: DcaByUser;
   settingsByUser: SettingsByUser;
 }) {
   return (
     Object.values(payload.tradesByUser).some((items) => items.length > 0) ||
     Object.values(payload.thoughtsByUser).some((items) => items.length > 0) ||
+    Object.values(payload.dcaByUser).some((items) => items.length > 0) ||
     Object.values(payload.settingsByUser).some(
       (setting) => Math.round(setting.initialCapital * 100) / 100 !== DEFAULT_INITIAL_CAPITAL
     )
@@ -257,6 +264,49 @@ export async function updateInitialCapitalOnServer(
   return data.setting;
 }
 
+export async function saveDcaEntryToServer(
+  profileId: AppUserId,
+  entry: DcaEntry
+): Promise<DcaEntry> {
+  const response = await fetch("/api/data/dca", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profileId, entry }),
+  });
+
+  const data = await parseJsonResponse<{ entry: DcaEntry }>(response);
+  return data.entry;
+}
+
+export async function updateDcaEntryOnServer(
+  profileId: AppUserId,
+  entry: DcaEntry
+): Promise<DcaEntry> {
+  const response = await fetch(`/api/data/dca/${entry.id}`, {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profileId, entry }),
+  });
+
+  const data = await parseJsonResponse<{ entry: DcaEntry }>(response);
+  return data.entry;
+}
+
+export async function deleteDcaEntryFromServer(profileId: AppUserId, entryId: string) {
+  const response = await fetch(`/api/data/dca/${entryId}?profileId=${profileId}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+
+  await parseJsonResponse<{ ok: true }>(response);
+}
+
 export async function importItemsToServer(params: {
   format: "trades-json" | "trades-csv" | "thoughts-json";
   mode: "merge" | "overwrite";
@@ -280,6 +330,7 @@ export async function importBackupToServer(params: {
   payload: {
     tradesByUser: TradesByUser;
     thoughtsByUser: ThoughtsByUser;
+    dcaByUser: DcaByUser;
     settingsByUser: SettingsByUser;
   };
 }) {

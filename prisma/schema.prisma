@@ -14,6 +14,7 @@ model Profile {
   updatedAt DateTime          @updatedAt
   trades   TradeRecord[]
   thoughts ThoughtRecord[]
+  dcaEntries DcaRecord[]
   setting  PortfolioSetting?
 }
 
@@ -62,6 +63,25 @@ model ThoughtRecord {
   profile    Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([profileId, category])
+  @@index([profileId, updatedAt])
+}
+
+model DcaRecord {
+  id             String   @id
+  profileId      String
+  ticker         String
+  name           String?
+  assetClass     String
+  currency       String
+  investedAt     String
+  investedAmount Float
+  quantity       Float
+  notes          String?
+  createdAt      String
+  updatedAt      String
+  profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, assetClass])
   @@index([profileId, updatedAt])
 }
 

@@ -4,6 +4,7 @@ export type TradeDirection = "long" | "short";
 export type TradeStatus = "open" | "closed";
 export type TradePricingMode = "manual" | "binance";
 export type BinanceMarketType = "spot" | "usdm-futures";
+export type DcaAssetClass = "stock" | "crypto";
 export type AssetClass =
   | "stock"
   | "etf"
@@ -66,6 +67,20 @@ export interface Thought {
   tags: string[];
   ticker?: string;
   isPrivate?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DcaEntry {
+  id: string;
+  ticker: string;
+  name?: string;
+  assetClass: DcaAssetClass;
+  currency: Currency;
+  investedAt: string;
+  investedAmount: number;
+  quantity: number;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }

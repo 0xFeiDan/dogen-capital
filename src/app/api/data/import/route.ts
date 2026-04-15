@@ -5,11 +5,13 @@ import {
   importBackup,
   importThoughtsForProfile,
   importTradesForProfile,
+  type DcaByUser,
   type SettingsByUser,
   type ThoughtsByUser,
   type TradesByUser,
 } from "@/lib/server-data";
 import { APP_USERS, isAppUserId } from "@/lib/users";
+import type { DcaEntry } from "@/types";
 
 type ImportMode = "merge" | "overwrite";
 
@@ -26,6 +28,7 @@ interface ImportBackupRequest {
   payload: {
     tradesByUser: Partial<TradesByUser>;
     thoughtsByUser: Partial<ThoughtsByUser>;
+    dcaByUser: Partial<DcaByUser>;
     settingsByUser: Partial<SettingsByUser>;
   };
 }
@@ -53,6 +56,64 @@ function normalizeSettingsByUser(source: Partial<SettingsByUser>): SettingsByUse
   };
 }
 
+function parseDcaEntries(value: unknown, userId: keyof DcaByUser): DcaEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item, index) => {
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`${userId} 的定投记录第 ${index + 1} 项无效`);
+    }
+
+    const entry = item as Partial<DcaEntry>;
+
+    if (
+      typeof entry.id !== "string" ||
+      typeof entry.ticker !== "string" ||
+      (entry.assetClass !== "stock" && entry.assetClass !== "crypto") ||
+      typeof entry.currency !== "string" ||
+      typeof entry.investedAt !== "string" ||
+      typeof entry.investedAmount !== "number" ||
+      !Number.isFinite(entry.investedAmount) ||
+      entry.investedAmount <= 0 ||
+      typeof entry.quantity !== "number" ||
+      !Number.isFinite(entry.quantity) ||
+      entry.quantity <= 0 ||
+      typeof entry.createdAt !== "string" ||
+      typeof entry.updatedAt !== "string"
+    ) {
+      throw new Error(`${userId} 的定投记录第 ${index + 1} 项无效`);
+    }
+
+    return [
+      {
+        id: entry.id,
+        ticker: entry.ticker.trim().toUpperCase(),
+        name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : undefined,
+        assetClass: entry.assetClass,
+        currency: entry.currency,
+        investedAt: entry.investedAt,
+        investedAmount: entry.investedAmount,
+        quantity: entry.quantity,
+        notes:
+          typeof entry.notes === "string" && entry.notes.trim()
+            ? entry.notes.trim()
+            : undefined,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      },
+    ];
+  });
+}
+
+function normalizeDcaByUser(source: Partial<DcaByUser>): DcaByUser {
+  return {
+    me: parseDcaEntries(source.me, "me"),
+    partner: parseDcaEntries(source.partner, "partner"),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const authError = await requireAuthenticatedApiRequest();
@@ -76,6 +137,7 @@ export async function POST(request: Request) {
 
       const tradesByUser = {} as TradesByUser;
       const thoughtsByUser = {} as ThoughtsByUser;
+      let dcaByUser: DcaByUser;
       let settingsByUser: SettingsByUser;
 
       for (const user of APP_USERS) {
@@ -103,6 +165,7 @@ export async function POST(request: Request) {
       }
 
       try {
+        dcaByUser = normalizeDcaByUser(body.payload.dcaByUser ?? {});
         settingsByUser = normalizeSettingsByUser(body.payload.settingsByUser ?? {});
       } catch (error) {
         return NextResponse.json(
@@ -115,6 +178,7 @@ export async function POST(request: Request) {
         {
           tradesByUser,
           thoughtsByUser,
+          dcaByUser,
           settingsByUser,
         },
         body.mode

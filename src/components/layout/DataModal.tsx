@@ -36,13 +36,13 @@ import {
   setActiveUserId,
   syncServerSnapshot,
 } from "@/lib/server-sync-client";
-import type { SettingsByUser, ThoughtsByUser, TradesByUser } from "@/lib/server-data";
+import type { DcaByUser, SettingsByUser, ThoughtsByUser, TradesByUser } from "@/lib/server-data";
 import { APP_USERS, isAppUserId, type AppUserId } from "@/lib/users";
 import { useAppUsers } from "@/store/useAppUsers";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
-import type { Thought, Trade } from "@/types";
+import type { DcaEntry, Thought, Trade } from "@/types";
 
 type Tab = "export" | "import";
 type ImportFormat = "backup-json" | "trades-json" | "trades-csv" | "thoughts-json";
@@ -57,12 +57,13 @@ type ParsedPayload =
   | {
       kind: "backup";
       format: "backup-json";
-      backup: {
-        tradesByUser: TradesByUser;
-        thoughtsByUser: ThoughtsByUser;
-        settingsByUser: SettingsByUser;
-        activeUserId?: AppUserId;
-      };
+    backup: {
+      tradesByUser: TradesByUser;
+      thoughtsByUser: ThoughtsByUser;
+      dcaByUser: DcaByUser;
+      settingsByUser: SettingsByUser;
+      activeUserId?: AppUserId;
+    };
       warnings: string[];
     };
 
@@ -159,6 +160,13 @@ function buildEmptyThoughtsByUser(): ThoughtsByUser {
   };
 }
 
+function buildEmptyDcaByUser(): DcaByUser {
+  return {
+    me: [],
+    partner: [],
+  };
+}
+
 function buildDefaultSettingsByUser(): SettingsByUser {
   return {
     me: { initialCapital: 100000 },
@@ -170,6 +178,58 @@ function normalizeCapital(value: unknown): number {
   const amount = typeof value === "number" ? value : Number(value ?? 0);
   if (!Number.isFinite(amount)) return 100000;
   return Math.round(Math.max(amount, 0) * 100) / 100;
+}
+
+function parseDcaEntries(value: unknown): ParseResult<DcaEntry> {
+  if (!Array.isArray(value)) {
+    return { data: [], errors: [] };
+  }
+
+  const data: DcaEntry[] = [];
+  const errors: string[] = [];
+
+  value.forEach((item, index) => {
+    if (typeof item !== "object" || item === null) {
+      errors.push(`DCA #${index + 1} invalid`);
+      return;
+    }
+
+    const entry = item as Partial<DcaEntry>;
+    if (
+      typeof entry.id !== "string" ||
+      typeof entry.ticker !== "string" ||
+      (entry.assetClass !== "stock" && entry.assetClass !== "crypto") ||
+      typeof entry.currency !== "string" ||
+      typeof entry.investedAt !== "string" ||
+      typeof entry.investedAmount !== "number" ||
+      !Number.isFinite(entry.investedAmount) ||
+      entry.investedAmount <= 0 ||
+      typeof entry.quantity !== "number" ||
+      !Number.isFinite(entry.quantity) ||
+      entry.quantity <= 0 ||
+      typeof entry.createdAt !== "string" ||
+      typeof entry.updatedAt !== "string"
+    ) {
+      errors.push(`DCA #${index + 1} invalid`);
+      return;
+    }
+
+    data.push({
+      id: entry.id,
+      ticker: entry.ticker.trim().toUpperCase(),
+      name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : undefined,
+      assetClass: entry.assetClass,
+      currency: entry.currency,
+      investedAt: entry.investedAt,
+      investedAmount: entry.investedAmount,
+      quantity: entry.quantity,
+      notes: typeof entry.notes === "string" && entry.notes.trim() ? entry.notes.trim() : undefined,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    });
+  });
+
+  return { data, errors };
 }
 
 function parseBackup(text: string): ParsedPayload & { kind: "backup" } {
@@ -194,6 +254,10 @@ function parseBackup(text: string): ParsedPayload & { kind: "backup" } {
     typeof source.thoughtsByUser === "object" && source.thoughtsByUser !== null
       ? (source.thoughtsByUser as Record<string, unknown>)
       : {};
+  const rawDcaByUser =
+    typeof source.dcaByUser === "object" && source.dcaByUser !== null
+      ? (source.dcaByUser as Record<string, unknown>)
+      : {};
   const rawSettingsByUser =
     typeof source.settingsByUser === "object" && source.settingsByUser !== null
       ? (source.settingsByUser as Record<string, unknown>)
@@ -201,18 +265,22 @@ function parseBackup(text: string): ParsedPayload & { kind: "backup" } {
 
   const tradesByUser = buildEmptyTradesByUser();
   const thoughtsByUser = buildEmptyThoughtsByUser();
+  const dcaByUser = buildEmptyDcaByUser();
   const settingsByUser = buildDefaultSettingsByUser();
   const warnings: string[] = [];
 
   APP_USERS.forEach((user) => {
     const tradeResult = jsonToTrades(JSON.stringify(rawTradesByUser[user.id] ?? []));
     const thoughtResult = jsonToThoughts(JSON.stringify(rawThoughtsByUser[user.id] ?? []));
+    const dcaResult = parseDcaEntries(rawDcaByUser[user.id] ?? []);
 
     tradesByUser[user.id] = tradeResult.data;
     thoughtsByUser[user.id] = thoughtResult.data;
+    dcaByUser[user.id] = dcaResult.data;
 
     warnings.push(...tradeResult.errors.map((error) => `${user.name} / 交易: ${error}`));
     warnings.push(...thoughtResult.errors.map((error) => `${user.name} / 笔记: ${error}`));
+    warnings.push(...dcaResult.errors.map((error) => `${user.name} / DCA: ${error}`));
 
     const rawSetting =
       typeof rawSettingsByUser[user.id] === "object" && rawSettingsByUser[user.id] !== null
@@ -230,6 +298,7 @@ function parseBackup(text: string): ParsedPayload & { kind: "backup" } {
     backup: {
       tradesByUser,
       thoughtsByUser,
+      dcaByUser,
       settingsByUser,
       activeUserId: isAppUserId(source.activeUserId) ? source.activeUserId : undefined,
     },
@@ -392,6 +461,7 @@ export function DataModal({ open, onClose }: DataModalProps) {
           payload: {
             tradesByUser: backup.tradesByUser,
             thoughtsByUser: backup.thoughtsByUser,
+            dcaByUser: backup.dcaByUser,
             settingsByUser: backup.settingsByUser,
           },
         });
@@ -404,7 +474,8 @@ export function DataModal({ open, onClose }: DataModalProps) {
 
         const count =
           APP_USERS.reduce((sum, user) => sum + backup.tradesByUser[user.id].length, 0) +
-          APP_USERS.reduce((sum, user) => sum + backup.thoughtsByUser[user.id].length, 0);
+          APP_USERS.reduce((sum, user) => sum + backup.thoughtsByUser[user.id].length, 0) +
+          APP_USERS.reduce((sum, user) => sum + backup.dcaByUser[user.id].length, 0);
 
         setImportState({
           status: "done",
@@ -649,7 +720,10 @@ export function DataModal({ open, onClose }: DataModalProps) {
                     const { backup, warnings } = importState.payload;
                     const totalItems = APP_USERS.reduce(
                       (sum, user) =>
-                        sum + backup.tradesByUser[user.id].length + backup.thoughtsByUser[user.id].length,
+                        sum +
+                        backup.tradesByUser[user.id].length +
+                        backup.thoughtsByUser[user.id].length +
+                        backup.dcaByUser[user.id].length,
                       0
                     );
 
@@ -670,6 +744,7 @@ export function DataModal({ open, onClose }: DataModalProps) {
                             <p key={user.id}>
                               {user.name}: {backup.tradesByUser[user.id].length} 条交易，
                               {backup.thoughtsByUser[user.id].length} 条笔记，
+                              {backup.dcaByUser[user.id].length} 条定投，
                               本金 {backup.settingsByUser[user.id].initialCapital}
                             </p>
                           ))}

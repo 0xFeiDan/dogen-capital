@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { syncServerSnapshot } from "@/lib/server-sync-client";
+import { useDcaEntries } from "@/store/useDcaEntries";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
@@ -14,13 +15,14 @@ export function ServerSyncBootstrap() {
   const pathname = usePathname();
   const tradesHydrated = useTrades((state) => state._hydrated);
   const thoughtsHydrated = useThoughts((state) => state._hydrated);
+  const dcaHydrated = useDcaEntries((state) => state._hydrated);
   const settingsHydrated = usePortfolioSettings((state) => state._hydrated);
   const [ready, setReady] = useState(pathname === "/login");
   const [error, setError] = useState("");
   const hasBootstrappedRef = useRef(false);
   const prevPathnameRef = useRef(pathname);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const storesReady = tradesHydrated && thoughtsHydrated && settingsHydrated;
+  const storesReady = tradesHydrated && thoughtsHydrated && dcaHydrated && settingsHydrated;
 
   if (prevPathnameRef.current === "/login" && pathname !== "/login") {
     hasBootstrappedRef.current = false;

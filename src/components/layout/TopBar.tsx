@@ -9,9 +9,10 @@ import { APP_USERS, useAppUsers } from "@/store/useAppUsers";
 import { DataModal } from "./DataModal";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "仪表盘",
-  "/journal": "交易日志",
-  "/thoughts": "思考笔记",
+  "/dashboard": "\u4eea\u8868\u76d8",
+  "/journal": "\u4ea4\u6613\u65e5\u5fd7",
+  "/dca": "\u5b9a\u6295",
+  "/thoughts": "\u601d\u8003\u7b14\u8bb0",
 };
 
 interface TopBarProps {
@@ -55,7 +56,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <button
             onClick={onMenuClick}
             className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary lg:hidden"
-            aria-label="打开菜单"
+            aria-label="\u6253\u5f00\u83dc\u5355"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -71,8 +72,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
                 setActiveUser(event.target.value as (typeof APP_USERS)[number]["id"])
               }
               className="bg-transparent text-xs font-medium text-text-primary outline-none"
-              aria-label="切换用户"
-              title="切换用户"
+              aria-label="\u5207\u6362\u7528\u6237"
+              title="\u5207\u6362\u7528\u6237"
             >
               {APP_USERS.map((user) => (
                 <option key={user.id} value={user.id}>
@@ -88,11 +89,11 @@ export function TopBar({ onMenuClick }: TopBarProps) {
               "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary",
               !mounted && "pointer-events-none opacity-0"
             )}
-            aria-label="导入或导出数据"
-            title="导入或导出数据"
+            aria-label="\u5bfc\u5165\u6216\u5bfc\u51fa\u6570\u636e"
+            title="\u5bfc\u5165\u6216\u5bfc\u51fa\u6570\u636e"
           >
             <Database className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">数据管理</span>
+            <span className="hidden sm:inline">\u6570\u636e\u7ba1\u7406</span>
           </button>
 
           <button
@@ -101,8 +102,8 @@ export function TopBar({ onMenuClick }: TopBarProps) {
               "rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary",
               !mounted && "pointer-events-none opacity-0"
             )}
-            aria-label="切换主题"
-            title="切换主题"
+            aria-label="\u5207\u6362\u4e3b\u9898"
+            title="\u5207\u6362\u4e3b\u9898"
           >
             {mounted && theme === "dark" ? (
               <Sun className="h-4 w-4" />
@@ -115,11 +116,11 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             onClick={handleLogout}
             disabled={loggingOut}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:opacity-50"
-            aria-label="退出登录"
-            title="退出登录"
+            aria-label="\u9000\u51fa\u767b\u5f55"
+            title="\u9000\u51fa\u767b\u5f55"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">退出</span>
+            <span className="hidden sm:inline">\u9000\u51fa</span>
           </button>
         </div>
       </header>

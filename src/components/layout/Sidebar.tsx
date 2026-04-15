@@ -2,22 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Brain, LayoutDashboard, TrendingUp, X } from "lucide-react";
+import { BookOpen, Brain, LayoutDashboard, TrendingUp, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   {
-    label: "仪表盘",
+    label: "\u4eea\u8868\u76d8",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
-    label: "交易日志",
+    label: "\u4ea4\u6613\u65e5\u5fd7",
     href: "/journal",
     icon: BookOpen,
   },
   {
-    label: "思考笔记",
+    label: "\u5b9a\u6295",
+    href: "/dca",
+    icon: Wallet,
+  },
+  {
+    label: "\u601d\u8003\u7b14\u8bb0",
     href: "/thoughts",
     icon: Brain,
   },
@@ -64,7 +69,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <button
             onClick={onClose}
             className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary lg:hidden"
-            aria-label="关闭菜单"
+            aria-label="\u5173\u95ed\u83dc\u5355"
           >
             <X className="h-4 w-4" />
           </button>
@@ -72,7 +77,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           <p className="mb-2 px-2 text-2xs font-semibold uppercase tracking-widest text-text-muted">
-            导航
+            \u5bfc\u822a
           </p>
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);

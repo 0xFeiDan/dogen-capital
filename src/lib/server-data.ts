@@ -1,4 +1,4 @@
-import type { Thought, Trade } from "@/types";
+import type { DcaEntry, Thought, Trade } from "@/types";
 import { db } from "@/lib/db";
 import { normalizeTrade } from "@/lib/pricing";
 import { APP_USERS, type AppUserId, type AppUserProfile, isAppUserId } from "@/lib/users";
@@ -67,6 +67,26 @@ async function ensureDatabaseSchema() {
   `);
 
   await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "DcaRecord" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "profileId" TEXT NOT NULL,
+      "ticker" TEXT NOT NULL,
+      "name" TEXT,
+      "assetClass" TEXT NOT NULL,
+      "currency" TEXT NOT NULL,
+      "investedAt" TEXT NOT NULL,
+      "investedAmount" REAL NOT NULL,
+      "quantity" REAL NOT NULL,
+      "notes" TEXT,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      CONSTRAINT "DcaRecord_profileId_fkey"
+        FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "PortfolioSetting" (
       "profileId" TEXT NOT NULL PRIMARY KEY,
       "initialCapital" REAL NOT NULL,
@@ -101,6 +121,16 @@ async function ensureDatabaseSchema() {
   await db.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThoughtRecord_profileId_updatedAt_idx"
     ON "ThoughtRecord" ("profileId", "updatedAt")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "DcaRecord_profileId_assetClass_idx"
+    ON "DcaRecord" ("profileId", "assetClass")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "DcaRecord_profileId_updatedAt_idx"
+    ON "DcaRecord" ("profileId", "updatedAt")
   `);
 
   const tradeColumns = await db.$queryRawUnsafe<Array<{ name: string }>>(
@@ -160,12 +190,14 @@ let setupPromise: Promise<void> | null = null;
 
 export type TradesByUser = Record<AppUserId, Trade[]>;
 export type ThoughtsByUser = Record<AppUserId, Thought[]>;
+export type DcaByUser = Record<AppUserId, DcaEntry[]>;
 export type SettingsByUser = Record<AppUserId, { initialCapital: number }>;
 
 export interface ServerSnapshot {
   profiles: AppUserProfile[];
   tradesByUser: TradesByUser;
   thoughtsByUser: ThoughtsByUser;
+  dcaByUser: DcaByUser;
   settingsByUser: SettingsByUser;
   serverHasData: boolean;
   syncedAt: string;
@@ -223,6 +255,13 @@ function buildEmptyTradesByUser(): TradesByUser {
 }
 
 function buildEmptyThoughtsByUser(): ThoughtsByUser {
+  return {
+    me: [],
+    partner: [],
+  };
+}
+
+function buildEmptyDcaByUser(): DcaByUser {
   return {
     me: [],
     partner: [],
@@ -348,10 +387,43 @@ function toThought(record: {
   };
 }
 
+function toDcaEntry(record: {
+  id: string;
+  profileId: string;
+  ticker: string;
+  name: string | null;
+  assetClass: string;
+  currency: string;
+  investedAt: string;
+  investedAmount: number;
+  quantity: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}): DcaEntry {
+  const logicalId = isAppUserId(record.profileId)
+    ? fromScopedId(record.profileId, record.id)
+    : record.id;
+
+  return {
+    id: logicalId,
+    ticker: record.ticker,
+    name: record.name ?? undefined,
+    assetClass: record.assetClass as DcaEntry["assetClass"],
+    currency: record.currency as DcaEntry["currency"],
+    investedAt: record.investedAt,
+    investedAmount: record.investedAmount,
+    quantity: record.quantity,
+    notes: record.notes ?? undefined,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 export async function getServerSnapshot(): Promise<ServerSnapshot> {
   await ensureServerSetup();
 
-  const [profiles, trades, thoughts, settings] = await Promise.all([
+  const [profiles, trades, thoughts, dcaEntries, settings] = await Promise.all([
     db.profile.findMany({
       orderBy: { id: "asc" },
       select: { id: true, name: true },
@@ -362,11 +434,15 @@ export async function getServerSnapshot(): Promise<ServerSnapshot> {
     db.thoughtRecord.findMany({
       orderBy: [{ profileId: "asc" }, { updatedAt: "desc" }],
     }),
+    db.dcaRecord.findMany({
+      orderBy: [{ profileId: "asc" }, { updatedAt: "desc" }],
+    }),
     db.portfolioSetting.findMany(),
   ]);
 
   const tradesByUser = buildEmptyTradesByUser();
   const thoughtsByUser = buildEmptyThoughtsByUser();
+  const dcaByUser = buildEmptyDcaByUser();
   const settingsByUser = buildDefaultSettingsByUser();
 
   trades.forEach((record) => {
@@ -381,6 +457,12 @@ export async function getServerSnapshot(): Promise<ServerSnapshot> {
     }
   });
 
+  dcaEntries.forEach((record) => {
+    if (isAppUserId(record.profileId)) {
+      dcaByUser[record.profileId].push(toDcaEntry(record));
+    }
+  });
+
   settings.forEach((record) => {
     if (isAppUserId(record.profileId)) {
       settingsByUser[record.profileId] = {
@@ -392,6 +474,7 @@ export async function getServerSnapshot(): Promise<ServerSnapshot> {
   const serverHasData =
     Object.values(tradesByUser).some((items) => items.length > 0) ||
     Object.values(thoughtsByUser).some((items) => items.length > 0) ||
+    Object.values(dcaByUser).some((items) => items.length > 0) ||
     Object.values(settingsByUser).some(
       (setting) => normalizeCapital(setting.initialCapital) !== DEFAULT_INITIAL_CAPITAL
     );
@@ -403,6 +486,7 @@ export async function getServerSnapshot(): Promise<ServerSnapshot> {
     })),
     tradesByUser,
     thoughtsByUser,
+    dcaByUser,
     settingsByUser,
     serverHasData,
     syncedAt: new Date().toISOString(),
@@ -531,6 +615,58 @@ export async function deleteThought(profileId: AppUserId, thoughtId: string) {
     where: {
       profileId,
       id: { in: [thoughtId, toScopedId(profileId, thoughtId)] },
+    },
+  });
+}
+
+export async function upsertDcaEntry(
+  profileId: AppUserId,
+  entry: DcaEntry
+): Promise<DcaEntry> {
+  await ensureServerSetup();
+
+  const scopedId = toScopedId(profileId, entry.id);
+  const existing = await db.dcaRecord.findFirst({
+    where: {
+      profileId,
+      id: { in: [scopedId, entry.id] },
+    },
+  });
+
+  const payload = {
+    id: scopedId,
+    profileId,
+    ticker: entry.ticker,
+    name: entry.name ?? null,
+    assetClass: entry.assetClass,
+    currency: entry.currency,
+    investedAt: entry.investedAt,
+    investedAmount: entry.investedAmount,
+    quantity: entry.quantity,
+    notes: entry.notes ?? null,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  };
+
+  const record = existing
+    ? await db.dcaRecord.update({
+        where: { id: existing.id },
+        data: payload,
+      })
+    : await db.dcaRecord.create({
+        data: payload,
+      });
+
+  return toDcaEntry(record);
+}
+
+export async function deleteDcaEntry(profileId: AppUserId, entryId: string) {
+  await ensureServerSetup();
+
+  await db.dcaRecord.deleteMany({
+    where: {
+      profileId,
+      id: { in: [entryId, toScopedId(profileId, entryId)] },
     },
   });
 }
@@ -682,6 +818,31 @@ async function replaceProfileThoughts(profileId: AppUserId, thoughts: Thought[])
   });
 }
 
+async function replaceProfileDcaEntries(profileId: AppUserId, entries: DcaEntry[]) {
+  await db.$transaction(async (tx) => {
+    await tx.dcaRecord.deleteMany({ where: { profileId } });
+
+    if (entries.length > 0) {
+      await tx.dcaRecord.createMany({
+        data: entries.map((entry) => ({
+          id: toScopedId(profileId, entry.id),
+          profileId,
+          ticker: entry.ticker,
+          name: entry.name ?? null,
+          assetClass: entry.assetClass,
+          currency: entry.currency,
+          investedAt: entry.investedAt,
+          investedAmount: entry.investedAmount,
+          quantity: entry.quantity,
+          notes: entry.notes ?? null,
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
+        })),
+      });
+    }
+  });
+}
+
 export async function importTradesForProfile(
   profileId: AppUserId,
   trades: Trade[],
@@ -716,10 +877,28 @@ export async function importThoughtsForProfile(
   await replaceProfileThoughts(profileId, merged);
 }
 
+export async function importDcaEntriesForProfile(
+  profileId: AppUserId,
+  entries: DcaEntry[],
+  mode: "merge" | "overwrite"
+) {
+  await ensureServerSetup();
+
+  if (mode === "overwrite") {
+    await replaceProfileDcaEntries(profileId, entries);
+    return;
+  }
+
+  const existing = await db.dcaRecord.findMany({ where: { profileId } });
+  const merged = mergeById(existing.map(toDcaEntry), entries);
+  await replaceProfileDcaEntries(profileId, merged);
+}
+
 export async function importBackup(
   payload: {
     tradesByUser: TradesByUser;
     thoughtsByUser: ThoughtsByUser;
+    dcaByUser: DcaByUser;
     settingsByUser: SettingsByUser;
   },
   mode: "merge" | "overwrite"
@@ -729,6 +908,7 @@ export async function importBackup(
   for (const user of APP_USERS) {
     await importTradesForProfile(user.id, payload.tradesByUser[user.id] ?? [], mode);
     await importThoughtsForProfile(user.id, payload.thoughtsByUser[user.id] ?? [], mode);
+    await importDcaEntriesForProfile(user.id, payload.dcaByUser[user.id] ?? [], mode);
 
     if (mode === "overwrite") {
       await updateInitialCapital(
