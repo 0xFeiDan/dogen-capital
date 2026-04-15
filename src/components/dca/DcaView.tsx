@@ -19,6 +19,7 @@ interface DcaPosition {
   key: string;
   ticker: string;
   name?: string;
+  repeatEntry: DcaEntry;
   assetClass: DcaAssetClass;
   currency: Currency;
   totalInvestedAmount: number;
@@ -173,6 +174,7 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
       current.entriesCount += 1;
       if (entry.investedAt > current.lastInvestedAt) {
         current.lastInvestedAt = entry.investedAt;
+        current.repeatEntry = entry;
       }
       if (!current.name && entry.name) {
         current.name = entry.name;
@@ -185,6 +187,7 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
       key,
       ticker: entry.ticker,
       name: entry.name,
+      repeatEntry: entry,
       assetClass: entry.assetClass,
       currency: entry.currency,
       totalInvestedAmount: entry.investedAmount,
@@ -485,7 +488,17 @@ export function DcaView() {
                         <tr key={position.key} className="border-t border-border/70">
                           <td className="px-5 py-4">
                             <div>
-                              <p className="font-medium text-text-primary">{position.ticker}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-text-primary">{position.ticker}</p>
+                                <Button
+                                  variant="secondary"
+                                  size="xs"
+                                  iconLeft={<Plus className="h-3.5 w-3.5" />}
+                                  onClick={() => handleRepeat(position.repeatEntry)}
+                                >
+                                  {ACTION_REPEAT}
+                                </Button>
+                              </div>
                               {position.name && (
                                 <p className="mt-1 text-xs text-text-muted">{position.name}</p>
                               )}
