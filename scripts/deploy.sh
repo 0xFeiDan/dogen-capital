@@ -22,8 +22,8 @@ echo "==> Pulling latest code"
 git fetch origin "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 
-echo "==> Installing dependencies"
-npm install
+echo "==> Installing dependencies, including build-time dev dependencies"
+npm install --include=dev
 
 echo "==> Loading environment from $ENV_FILE"
 set -a
