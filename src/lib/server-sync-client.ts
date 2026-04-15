@@ -330,10 +330,10 @@ export async function updateDcaLivePricesOnServer(
 }
 
 export async function importItemsToServer(params: {
-  format: "trades-json" | "trades-csv" | "thoughts-json";
+  format: "trades-json" | "trades-csv" | "thoughts-json" | "dca-json";
   mode: "merge" | "overwrite";
   profileId: AppUserId;
-  items: Trade[] | Thought[];
+  items: Trade[] | Thought[] | DcaEntry[];
 }) {
   const response = await fetch("/api/data/import", {
     method: "POST",
@@ -373,7 +373,7 @@ export async function importBackupToServer(params: {
 }
 
 export async function downloadServerExport(
-  type: "backup-json" | "trades-json" | "trades-csv" | "thoughts-json",
+  type: "backup-json" | "trades-json" | "trades-csv" | "thoughts-json" | "dca-json",
   profileId?: AppUserId
 ) {
   const searchParams = new URLSearchParams({ type });

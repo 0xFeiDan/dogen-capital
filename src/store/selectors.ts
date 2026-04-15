@@ -212,10 +212,7 @@ export function computeMonthlyPnl(trades: Trade[]): MonthlyPnl[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, { pnl, trades }]) => {
       const [year, mo] = month.split("-");
-      const label = new Date(Number(year), Number(mo) - 1, 1).toLocaleDateString(
-        "en-US",
-        { month: "short", year: "2-digit" }
-      );
+      const label = `${year}-${mo.padStart(2, "0")}`;
 
       return {
         month,

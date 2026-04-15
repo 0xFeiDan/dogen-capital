@@ -7,6 +7,7 @@
 
 import type {
   BinanceMarketType,
+  DcaEntry,
   Trade,
   Thought,
   TradeDirection,
@@ -17,6 +18,11 @@ import type {
   ThoughtCategory,
 } from "@/types";
 import { normalizeBinanceSymbol, normalizeTrade } from "@/lib/pricing";
+
+const DCA_ASSET_CLASSES = ["stock", "crypto"] as const;
+const CURRENCIES: Currency[] = [
+  "USD","HKD","CNY","EUR","GBP","JPY","BTC","ETH",
+];
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
@@ -76,6 +82,10 @@ export function thoughtsToJSON(thoughts: Thought[]): string {
     null,
     2
   );
+}
+
+export function dcaEntriesToJSON(entries: DcaEntry[]): string {
+  return JSON.stringify({ version: 1, type: "dca", data: entries }, null, 2);
 }
 
 // ─── JSON import ──────────────────────────────────────────────────────────────
@@ -139,6 +149,36 @@ export function jsonToThoughts(text: string): ParseResult<Thought> {
     const { thought, error } = validateThoughtObject(item, i + 1);
     if (error) errors.push(error);
     if (thought) data.push(thought);
+  });
+
+  return { data, errors };
+}
+
+export function jsonToDcaEntries(text: string): ParseResult<DcaEntry> {
+  const errors: string[] = [];
+  let raw: unknown;
+
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { data: [], errors: ["Invalid JSON: could not parse file"] };
+  }
+
+  const arr: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as Record<string, unknown>)?.data)
+    ? ((raw as Record<string, unknown>).data as unknown[])
+    : [];
+
+  if (arr.length === 0 && !Array.isArray(raw)) {
+    return { data: [], errors: ["JSON must contain an array of DCA objects"] };
+  }
+
+  const data: DcaEntry[] = [];
+  arr.forEach((item, i) => {
+    const { entry, error } = validateDcaObject(item, i + 1);
+    if (error) errors.push(error);
+    if (entry) data.push(entry);
   });
 
   return { data, errors };
@@ -608,6 +648,77 @@ function validateThoughtObject(
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
+
+function validateDcaObject(
+  obj: unknown,
+  rowNum: number
+): { entry: DcaEntry | null; error: string | null } {
+  if (typeof obj !== "object" || obj === null) {
+    return { entry: null, error: `Item ${rowNum}: not an object - skipped` };
+  }
+
+  const o = obj as Record<string, unknown>;
+  const ticker = String(o.ticker ?? "").trim().toUpperCase();
+  const assetClass = String(o.assetClass ?? "stock").trim();
+  const currency = String(o.currency ?? "USD").trim().toUpperCase();
+  const investedAt = String(o.investedAt ?? "").trim();
+  const investedAmount = parseFiniteNumber(o.investedAmount);
+  const quantity = parseFiniteNumber(o.quantity);
+  const currentPrice = parseOptionalFiniteNumber(o.currentPrice);
+
+  if (!ticker) {
+    return { entry: null, error: `Item ${rowNum}: missing ticker - skipped` };
+  }
+
+  if (!DCA_ASSET_CLASSES.includes(assetClass as DcaEntry["assetClass"])) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid assetClass - skipped` };
+  }
+
+  if (!CURRENCIES.includes(currency as Currency)) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid currency - skipped` };
+  }
+
+  if (!isIsoLikeDate(investedAt)) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid investedAt - skipped` };
+  }
+
+  if (investedAmount == null || investedAmount <= 0) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid investedAmount - skipped` };
+  }
+
+  if (quantity == null || quantity <= 0) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid quantity - skipped` };
+  }
+
+  if (currentPrice === null || (typeof currentPrice === "number" && currentPrice <= 0)) {
+    return { entry: null, error: `Item ${rowNum} (${ticker}): invalid currentPrice - skipped` };
+  }
+
+  const quoteCurrency = String(o.quoteCurrency ?? "").trim().toUpperCase();
+
+  return {
+    entry: {
+      id: String(o.id ?? `dca_imp_${Date.now()}_${rowNum}`),
+      ticker,
+      name: o.name ? String(o.name).trim() : undefined,
+      assetClass: assetClass as DcaEntry["assetClass"],
+      currency: currency as Currency,
+      investedAt,
+      investedAmount,
+      quantity,
+      currentPrice: currentPrice ?? undefined,
+      quoteSymbol: o.quoteSymbol ? String(o.quoteSymbol).trim().toUpperCase() : undefined,
+      quoteCurrency: CURRENCIES.includes(quoteCurrency as Currency)
+        ? (quoteCurrency as Currency)
+        : undefined,
+      priceUpdatedAt: o.priceUpdatedAt ? String(o.priceUpdatedAt) : undefined,
+      notes: o.notes ? String(o.notes) : undefined,
+      createdAt: String(o.createdAt ?? new Date().toISOString()),
+      updatedAt: String(o.updatedAt ?? new Date().toISOString()),
+    },
+    error: null,
+  };
+}
 
 /** Returns today's date as YYYYMMDD for filenames. */
 export function todayStamp(): string {

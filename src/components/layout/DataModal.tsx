@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import {
   csvToTrades,
+  jsonToDcaEntries,
   jsonToThoughts,
   jsonToTrades,
   type ParseResult,
@@ -40,19 +41,25 @@ import type { DcaByUser, SettingsByUser, ThoughtsByUser, TradesByUser } from "@/
 import { APP_USERS, isAppUserId, type AppUserId } from "@/lib/users";
 import { useAppUsers } from "@/store/useAppUsers";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
+import { useDcaEntries } from "@/store/useDcaEntries";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
 import type { DcaEntry, Thought, Trade } from "@/types";
 
 type Tab = "export" | "import";
-type ImportFormat = "backup-json" | "trades-json" | "trades-csv" | "thoughts-json";
+type ImportFormat =
+  | "backup-json"
+  | "trades-json"
+  | "trades-csv"
+  | "thoughts-json"
+  | "dca-json";
 type ImportMode = "merge" | "overwrite";
 
 type ParsedPayload =
   | {
       kind: "items";
       format: Exclude<ImportFormat, "backup-json">;
-      result: ParseResult<Trade | Thought>;
+      result: ParseResult<Trade | Thought | DcaEntry>;
     }
   | {
       kind: "backup";
@@ -332,6 +339,7 @@ export function DataModal({ open, onClose }: DataModalProps) {
   const activeUser = APP_USERS.find((user) => user.id === activeUserId) ?? APP_USERS[0];
   const tradesByUser = useTrades((state) => state.tradesByUser);
   const thoughtsByUser = useThoughts((state) => state.thoughtsByUser);
+  const dcaEntriesByUser = useDcaEntries((state) => state.dcaEntriesByUser);
   const settingsByUser = usePortfolioSettings((state) => state.settingsByUser);
 
   const [tab, setTab] = useState<Tab>("export");
@@ -350,9 +358,13 @@ export function DataModal({ open, onClose }: DataModalProps) {
     () => APP_USERS.reduce((sum, user) => sum + (thoughtsByUser[user.id]?.length ?? 0), 0),
     [thoughtsByUser]
   );
+  const totalDcaEntries = useMemo(
+    () => APP_USERS.reduce((sum, user) => sum + (dcaEntriesByUser[user.id]?.length ?? 0), 0),
+    [dcaEntriesByUser]
+  );
 
   const handleExport = async (
-    type: "backup-json" | "trades-json" | "trades-csv" | "thoughts-json"
+    type: "backup-json" | "trades-json" | "trades-csv" | "thoughts-json" | "dca-json"
   ) => {
     setBusy(true);
 
@@ -386,14 +398,16 @@ export function DataModal({ open, onClose }: DataModalProps) {
           return;
         }
 
-        let result: ParseResult<Trade | Thought>;
+        let result: ParseResult<Trade | Thought | DcaEntry>;
 
         if (guessedFormat === "trades-json") {
-          result = jsonToTrades(text) as ParseResult<Trade | Thought>;
+          result = jsonToTrades(text) as ParseResult<Trade | Thought | DcaEntry>;
         } else if (guessedFormat === "trades-csv") {
-          result = csvToTrades(text) as ParseResult<Trade | Thought>;
+          result = csvToTrades(text) as ParseResult<Trade | Thought | DcaEntry>;
+        } else if (guessedFormat === "dca-json") {
+          result = jsonToDcaEntries(text) as ParseResult<Trade | Thought | DcaEntry>;
         } else {
-          result = jsonToThoughts(text) as ParseResult<Trade | Thought>;
+          result = jsonToThoughts(text) as ParseResult<Trade | Thought | DcaEntry>;
         }
 
         if (result.data.length === 0 && result.errors.length > 0) {
@@ -455,6 +469,19 @@ export function DataModal({ open, onClose }: DataModalProps) {
             status: "done",
             count,
             label: `${activeUser.name}的交易记录`,
+          });
+        } else if (importState.payload.format === "dca-json") {
+          await importItemsToServer({
+            format: "dca-json",
+            mode,
+            profileId: activeUserId,
+            items: importState.payload.result.data as DcaEntry[],
+          });
+          await syncServerSnapshot();
+          setImportState({
+            status: "done",
+            count,
+            label: `${activeUser.name}的定投记录`,
           });
         } else {
           await importItemsToServer({
@@ -604,6 +631,15 @@ export function DataModal({ open, onClose }: DataModalProps) {
                   }}
                   loading={busy}
                 />
+                <ExportRow
+                  label={`${activeUser.name}的定投记录`}
+                  sub={`${dcaEntriesByUser[activeUserId]?.length ?? 0} 条定投，可导出为 JSON`}
+                  icon={FileJson}
+                  onJSON={() => {
+                    void handleExport("dca-json");
+                  }}
+                  loading={busy}
+                />
               </div>
             )}
 
@@ -626,6 +662,7 @@ export function DataModal({ open, onClose }: DataModalProps) {
                     <option value="trades-json">交易记录 - JSON</option>
                     <option value="trades-csv">交易记录 - CSV</option>
                     <option value="thoughts-json">思考笔记 - JSON</option>
+                    <option value="dca-json">定投记录 - JSON</option>
                   </select>
                 </div>
 

@@ -69,7 +69,7 @@ function ChartTooltip({
         {formatCurrency(d.pnl)}
       </p>
       <p className="text-text-muted mt-0.5">
-        {d.trades} trade{d.trades !== 1 ? "s" : ""}
+        {d.trades} 笔交易
       </p>
     </div>
   );
@@ -91,7 +91,7 @@ export default function MonthlyBarChart() {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-52 text-sm text-text-muted">
-        No closed trades yet
+        暂无已平仓交易
       </div>
     );
   }

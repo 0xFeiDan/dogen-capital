@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
-import { jsonToThoughts, jsonToTrades } from "@/lib/io";
+import { jsonToDcaEntries, jsonToThoughts, jsonToTrades } from "@/lib/io";
 import {
   importBackup,
+  importDcaEntriesForProfile,
   importThoughtsForProfile,
   importTradesForProfile,
   type DcaByUser,
@@ -16,7 +17,7 @@ import type { DcaEntry } from "@/types";
 type ImportMode = "merge" | "overwrite";
 
 interface ImportItemsRequest {
-  format: "trades-json" | "trades-csv" | "thoughts-json";
+  format: "trades-json" | "trades-csv" | "thoughts-json" | "dca-json";
   mode: ImportMode;
   profileId: string;
   items: unknown[];
@@ -214,6 +215,16 @@ export async function POST(request: Request) {
       }
 
       await importThoughtsForProfile(body.profileId, result.data, body.mode);
+      return NextResponse.json({ ok: true, count: result.data.length });
+    }
+
+    if (body.format === "dca-json") {
+      const result = jsonToDcaEntries(JSON.stringify(body.items));
+      if (result.errors.length > 0) {
+        return NextResponse.json({ error: result.errors[0] }, { status: 400 });
+      }
+
+      await importDcaEntriesForProfile(body.profileId, result.data, body.mode);
       return NextResponse.json({ ok: true, count: result.data.length });
     }
 

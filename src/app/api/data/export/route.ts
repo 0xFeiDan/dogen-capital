@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
-import { thoughtsToJSON, todayStamp, tradesToCSV, tradesToJSON } from "@/lib/io";
+import {
+  dcaEntriesToJSON,
+  thoughtsToJSON,
+  todayStamp,
+  tradesToCSV,
+  tradesToJSON,
+} from "@/lib/io";
 import { requireAuthenticatedApiRequest } from "@/lib/auth/api";
 import { createServerBackup, getServerSnapshot } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
 
-type ExportType = "backup-json" | "trades-json" | "trades-csv" | "thoughts-json";
+type ExportType =
+  | "backup-json"
+  | "trades-json"
+  | "trades-csv"
+  | "thoughts-json"
+  | "dca-json";
 
 function attachmentHeaders(filename: string, contentType: string) {
   return {
@@ -63,6 +74,13 @@ export async function GET(request: Request) {
           `dogen-thoughts-${profileId}-${stamp}.json`,
           "application/json"
         ),
+      });
+    }
+
+    if (type === "dca-json") {
+      return new Response(dcaEntriesToJSON(snapshot.dcaByUser[profileId]), {
+        status: 200,
+        headers: attachmentHeaders(`dogen-dca-${profileId}-${stamp}.json`, "application/json"),
       });
     }
 

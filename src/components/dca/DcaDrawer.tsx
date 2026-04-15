@@ -19,6 +19,7 @@ interface DcaDrawerProps {
   open: boolean;
   onClose: () => void;
   editingEntry?: DcaEntry | null;
+  initialValues?: DcaFormState | null;
 }
 
 function makeDcaId(): string {
@@ -34,7 +35,7 @@ const SUBMITTING_LABEL = "\u63d0\u4ea4\u4e2d...";
 const SAVE_CHANGES_LABEL = "\u4fdd\u5b58\u4fee\u6539";
 const ADD_ENTRY_LABEL = "\u4fdd\u5b58\u5b9a\u6295";
 
-export function DcaDrawer({ open, onClose, editingEntry }: DcaDrawerProps) {
+export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftValues }: DcaDrawerProps) {
   const activeUserId = useAppUsers((state) => state.activeUserId);
   const upsertEntry = useDcaEntries((state) => state.upsertEntry);
   const [submitting, setSubmitting] = useState(false);
@@ -111,7 +112,7 @@ export function DcaDrawer({ open, onClose, editingEntry }: DcaDrawerProps) {
     }
   }
 
-  const initialValues = editingEntry ? dcaToForm(editingEntry) : EMPTY_DCA_FORM;
+  const initialValues = editingEntry ? dcaToForm(editingEntry) : draftValues ?? EMPTY_DCA_FORM;
   const isEditing = Boolean(editingEntry);
 
   return (
@@ -164,7 +165,7 @@ export function DcaDrawer({ open, onClose, editingEntry }: DcaDrawerProps) {
               </div>
             )}
             <DcaForm
-              key={editingEntry?.id ?? "new"}
+              key={editingEntry?.id ?? `${initialValues.ticker}:${initialValues.investedAt}:new`}
               initialValues={initialValues}
               className="min-h-0 flex-1"
               onSubmit={(values) => {

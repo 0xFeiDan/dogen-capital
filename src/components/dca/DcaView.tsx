@@ -11,6 +11,7 @@ import { useAppUsers } from "@/store/useAppUsers";
 import { useDcaEntries } from "@/store/useDcaEntries";
 import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
 import { DcaDrawer } from "./DcaDrawer";
+import { dcaToForm, type DcaFormState } from "./DcaForm";
 
 type AssetFilter = "all" | DcaAssetClass;
 
@@ -81,7 +82,14 @@ const RECORD_COL_LIVE_PRICE = "\u5f53\u524d\u4ef7";
 const RECORD_COL_NOTE = "\u5907\u6ce8";
 const RECORD_COL_ACTION = "\u64cd\u4f5c";
 const ACTION_EDIT = "\u7f16\u8f91";
+const ACTION_REPEAT = "\u518d\u6295";
 const ACTION_DELETE = "\u5220\u9664";
+
+function todayInputDate() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
 
 function formatQuantity(value: number): string {
   return value.toLocaleString("en-US", {
@@ -251,6 +259,7 @@ export function DcaView() {
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<DcaEntry | null>(null);
+  const [draftValues, setDraftValues] = useState<DcaFormState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DcaEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -320,17 +329,30 @@ export function DcaView() {
 
   function handleNew() {
     setEditingEntry(null);
+    setDraftValues(null);
     setDrawerOpen(true);
   }
 
   function handleEdit(entry: DcaEntry) {
     setEditingEntry(entry);
+    setDraftValues(null);
+    setDrawerOpen(true);
+  }
+
+  function handleRepeat(entry: DcaEntry) {
+    const nextValues = dcaToForm(entry);
+    setEditingEntry(null);
+    setDraftValues({
+      ...nextValues,
+      investedAt: todayInputDate(),
+    });
     setDrawerOpen(true);
   }
 
   function handleDrawerClose() {
     setDrawerOpen(false);
     setEditingEntry(null);
+    setDraftValues(null);
   }
 
   async function handleDeleteConfirm() {
@@ -606,6 +628,14 @@ export function DcaView() {
                                   {ACTION_EDIT}
                                 </Button>
                                 <Button
+                                  variant="secondary"
+                                  size="xs"
+                                  iconLeft={<Plus className="h-3.5 w-3.5" />}
+                                  onClick={() => handleRepeat(entry)}
+                                >
+                                  {ACTION_REPEAT}
+                                </Button>
+                                <Button
                                   variant="danger"
                                   size="xs"
                                   iconLeft={<Trash2 className="h-3.5 w-3.5" />}
@@ -627,7 +657,12 @@ export function DcaView() {
         )}
       </div>
 
-      <DcaDrawer open={drawerOpen} onClose={handleDrawerClose} editingEntry={editingEntry} />
+      <DcaDrawer
+        open={drawerOpen}
+        onClose={handleDrawerClose}
+        editingEntry={editingEntry}
+        initialValues={draftValues}
+      />
 
       <Dialog
         open={Boolean(deleteTarget)}
