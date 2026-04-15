@@ -176,6 +176,27 @@ Dogen Capital 是一个面向个人交易者的交易日志与复盘系统。它
 - 你在电脑 A 上修改的数据会写入服务端
 - 电脑 B 在刷新、聚焦或下一轮同步后可以看到相同结果
 
+## 定投与实时价格
+
+定投页面支持手动记录每一次买入金额与数量，并自动汇总持仓成本、当前市值和浮动盈亏。
+
+实时价格来源：
+
+- 虚拟货币：Binance 买一价
+- 美股：Twelve Data Quote API
+
+美股实时价格需要在服务端环境变量中配置：
+
+- `TWELVEDATA_API_KEY`
+- `TWELVEDATA_CACHE_SECONDS`，可选，默认 60 秒，避免频繁刷新消耗 API 额度
+
+股票代码按 Twelve Data 的 symbol 输入，例如：
+
+- `META`
+- `NVDA`
+- `TSLA`
+- `CRCL`
+
 ## 导入与导出
 
 当前导入导出为服务端驱动模式。
@@ -185,6 +206,7 @@ Dogen Capital 是一个面向个人交易者的交易日志与复盘系统。它
 - 当前用户交易记录 JSON
 - 当前用户交易记录 CSV
 - 当前用户思考笔记 JSON
+- 当前用户定投记录 JSON
 - 完整双人数据包 JSON
 
 支持导入：
@@ -253,6 +275,8 @@ npm install
 - `AUTH_PASSWORD_HASH`
 - `AUTH_SESSION_SECRET`
 - `AUTH_SESSION_TTL_SECONDS`
+- `TWELVEDATA_API_KEY`，用于定投页美股实时价格，可选但推荐填写
+- `TWELVEDATA_CACHE_SECONDS`，可选，默认 60 秒
 
 示例内容见 [`.env.example`](C:\Users\Administrator\Desktop\dogen\.env.example)。
 

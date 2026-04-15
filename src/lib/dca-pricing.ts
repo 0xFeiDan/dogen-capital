@@ -1,6 +1,6 @@
 import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
 
-export type DcaQuoteSource = "binance" | "yahoo";
+export type DcaQuoteSource = "binance" | "twelvedata";
 
 export interface DcaMarketQuote {
   assetClass: DcaAssetClass;

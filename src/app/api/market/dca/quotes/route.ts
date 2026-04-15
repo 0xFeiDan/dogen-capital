@@ -23,19 +23,26 @@ interface BinanceBookTickerPayload {
   askQty: string;
 }
 
-interface YahooChartPayload {
-  chart?: {
-    result?: Array<{
-      meta?: {
-        symbol?: string;
-        currency?: string;
-        regularMarketPrice?: number;
-        previousClose?: number;
-        chartPreviousClose?: number;
-      };
-    }>;
-  };
+interface TwelveDataQuotePayload {
+  symbol?: string;
+  currency?: string;
+  exchange?: string;
+  mic_code?: string;
+  close?: string | number | null;
+  previous_close?: string | number | null;
+  extended_price?: string | number | null;
+  status?: string;
+  message?: string;
+  code?: number;
 }
+
+const TWELVE_DATA_API_URL = "https://api.twelvedata.com/quote";
+const TWELVE_DATA_CACHE_MS =
+  Math.max(15, Number(process.env.TWELVEDATA_CACHE_SECONDS ?? 60)) * 1000;
+const stockQuoteCache = new Map<
+  string,
+  { quote: DcaMarketQuote | null; expiresAt: number }
+>();
 
 function sanitizeSymbols(symbols?: string[], pattern = /[^A-Z0-9]/g): string[] {
   if (!Array.isArray(symbols)) return [];
@@ -70,6 +77,23 @@ function parseBinanceQuote(payload: BinanceBookTickerPayload): DcaMarketQuote | 
   };
 }
 
+function parseTwelveDataPrice(payload: TwelveDataQuotePayload): number {
+  const candidates = [
+    payload.extended_price,
+    payload.close,
+    payload.previous_close,
+  ];
+
+  for (const candidate of candidates) {
+    const price = Number(candidate);
+    if (Number.isFinite(price) && price > 0) {
+      return price;
+    }
+  }
+
+  return Number.NaN;
+}
+
 async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
   if (symbols.length === 0) return [];
 
@@ -90,39 +114,65 @@ async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
 }
 
 async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
-  const response = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      symbol
-    )}?range=1d&interval=1m`,
-    {
-      cache: "no-store",
-      headers: {
-        "User-Agent": "Mozilla/5.0 DogenCapital/1.0",
-      },
-    }
-  );
+  const apiKey = process.env.TWELVEDATA_API_KEY;
+  if (!apiKey) return null;
 
-  if (!response.ok) return null;
+  const cacheKey = symbol.toUpperCase();
+  const cached = stockQuoteCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.quote;
+  }
 
-  const payload = (await response.json()) as YahooChartPayload;
-  const meta = payload.chart?.result?.[0]?.meta;
-  const price = Number(
-    meta?.regularMarketPrice ?? meta?.previousClose ?? meta?.chartPreviousClose
-  );
-  const currency = String(meta?.currency ?? "USD").toUpperCase();
+  const url = new URL(TWELVE_DATA_API_URL);
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("apikey", apiKey);
+  url.searchParams.set("interval", "1min");
 
-  if (!Number.isFinite(price) || price <= 0 || !isSupportedQuoteCurrency(currency)) {
+  const response = await fetch(url, { cache: "no-store" });
+
+  if (!response.ok) {
+    stockQuoteCache.set(cacheKey, {
+      quote: null,
+      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
+    });
     return null;
   }
 
-  return {
+  const payload = (await response.json()) as TwelveDataQuotePayload;
+  if (payload.status === "error") {
+    stockQuoteCache.set(cacheKey, {
+      quote: null,
+      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
+    });
+    return null;
+  }
+
+  const price = parseTwelveDataPrice(payload);
+  const currency = String(payload.currency ?? "USD").toUpperCase();
+
+  if (!Number.isFinite(price) || price <= 0 || !isSupportedQuoteCurrency(currency)) {
+    stockQuoteCache.set(cacheKey, {
+      quote: null,
+      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
+    });
+    return null;
+  }
+
+  const quote: DcaMarketQuote = {
     assetClass: "stock",
-    symbol: (meta?.symbol ?? symbol).toUpperCase(),
+    symbol: (payload.symbol ?? symbol).toUpperCase(),
     price,
     currency: currency as Currency,
-    source: "yahoo",
+    source: "twelvedata",
     fetchedAt: new Date().toISOString(),
   };
+
+  stockQuoteCache.set(cacheKey, {
+    quote,
+    expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
+  });
+
+  return quote;
 }
 
 async function fetchStockQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
