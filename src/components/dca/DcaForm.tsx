@@ -46,6 +46,9 @@ const DATE_LABEL = "\u5b9a\u6295\u65e5\u671f *";
 const AMOUNT_LABEL = "\u6295\u5165\u91d1\u989d *";
 const QUANTITY_LABEL = "\u4e70\u5165\u6570\u91cf *";
 const NOTES_LABEL = "\u5907\u6ce8";
+const NAME_PLACEHOLDER = "\u8d44\u4ea7\u540d\u79f0";
+const NOTES_PLACEHOLDER =
+  "\u4f8b\u5982\uff1a\u6bcf\u6708\u5de5\u8d44\u65e5\u5b9a\u6295\u3001\u66b4\u8dcc\u8865\u4ed3\u3001\u5b63\u5ea6\u52a0\u4ed3\u8ba1\u5212";
 const PREVIEW_LABEL = "\u672c\u6b21\u5b9a\u6295\u9884\u89c8";
 const PREVIEW_AMOUNT = "\u6295\u5165\u91d1\u989d";
 const PREVIEW_QUANTITY = "\u4e70\u5165\u6570\u91cf";
@@ -177,7 +180,7 @@ export function DcaForm({
             label={NAME_LABEL}
             value={form.name}
             onChange={(event) => set("name")(event.target.value)}
-            placeholder="\u8d44\u4ea7\u540d\u79f0"
+            placeholder={NAME_PLACEHOLDER}
           />
         </div>
 
@@ -272,7 +275,7 @@ export function DcaForm({
           label={NOTES_LABEL}
           value={form.notes}
           onChange={(event) => set("notes")(event.target.value)}
-          placeholder="\u4f8b\u5982\uff1a\u6bcf\u6708\u5de5\u8d44\u65e5\u5b9a\u6295\u3001\u66b4\u8dcc\u8865\u4ed3\u3001\u5b63\u5ea6\u52a0\u4ed3\u8ba1\u5212"
+          placeholder={NOTES_PLACEHOLDER}
           className="min-h-[100px]"
         />
       </div>

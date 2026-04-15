@@ -46,6 +46,7 @@ const CAPITAL_HINT = "\u53ef\u968f\u65f6\u624b\u52a8\u8c03\u6574";
 const TOTAL_PNL_LABEL = "\u603b\u76c8\u4e8f";
 const REALISED_LABEL = "\u5df2\u5b9e\u73b0";
 const UNREALISED_LABEL = "\u672a\u5b9e\u73b0";
+const DCA_LABEL = "\u5b9a\u6295";
 const WIN_RATE_LABEL = "\u80dc\u7387";
 const OPEN_TRADES_LABEL = "\u6301\u4ed3\u4e2d";
 const NO_OPEN_TRADES_LABEL = "\u6682\u65e0\u6301\u4ed3";
@@ -90,6 +91,7 @@ export function DashboardView() {
 
   const capitalPnlPercent =
     initialCapital > 0 ? (stats.combinedNetPnl / initialCapital) * 100 : 0;
+  const openPositionCount = stats.openTrades + stats.dcaPositions;
 
   useEffect(() => {
     if (!editingCapital) {
@@ -198,7 +200,7 @@ export function DashboardView() {
           value={formatCurrency(stats.combinedNetPnl, "USD", true)}
           trend={capitalPnlPercent !== 0 ? formatPercent(capitalPnlPercent) : undefined}
           trendSign={pnlSign}
-          sub={`${REALISED_LABEL} ${formatCurrency(stats.realisedNetPnl, "USD", true)} · ${UNREALISED_LABEL} ${formatCurrency(stats.unrealisedNetPnl, "USD", true)}`}
+          sub={`${REALISED_LABEL} ${formatCurrency(stats.realisedNetPnl, "USD", true)} / ${UNREALISED_LABEL} ${formatCurrency(stats.tradeUnrealisedNetPnl, "USD", true)} / ${DCA_LABEL} ${formatCurrency(stats.dcaUnrealisedNetPnl, "USD", true)}`}
           icon={TrendingUp}
           iconColor={pnlSign === "positive" ? "text-profit" : "text-loss"}
           accent
@@ -220,14 +222,14 @@ export function DashboardView() {
 
         <StatCard
           label={OPEN_TRADES_LABEL}
-          value={String(stats.openTrades)}
-          sub={`\u5171 ${stats.totalTrades} \u7b14\u4ea4\u6613`}
+          value={String(openPositionCount)}
+          sub={`\u4ea4\u6613 ${stats.openTrades} / \u5b9a\u6295 ${stats.dcaPositions}`}
           trend={
-            stats.openTrades > 0
+            openPositionCount > 0
               ? `${UNREALISED_LABEL} ${formatCurrency(stats.unrealisedNetPnl, "USD", true)}`
               : NO_OPEN_TRADES_LABEL
           }
-          trendSign={stats.openTrades > 0 ? unrealisedPnlSign : "neutral"}
+          trendSign={openPositionCount > 0 ? unrealisedPnlSign : "neutral"}
           icon={Layers}
           iconColor="text-text-secondary"
         />

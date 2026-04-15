@@ -23,6 +23,9 @@ interface DcaPosition {
   totalInvestedAmount: number;
   totalQuantity: number;
   averageCost: number;
+  currentPrice?: number;
+  marketValue: number;
+  unrealizedPnl: number;
   entriesCount: number;
   lastInvestedAt: string;
 }
@@ -47,12 +50,26 @@ const METRIC_RECORDS = "\u5b9a\u6295\u6b21\u6570";
 const METRIC_STOCKS = "\u80a1\u7968\u6807\u7684";
 const METRIC_CRYPTOS = "\u5e01\u79cd\u6807\u7684";
 const METRIC_INVESTED = "\u7d2f\u8ba1\u6295\u5165";
+const METRIC_MARKET_VALUE = "\u5f53\u524d\u5e02\u503c";
+const METRIC_FLOATING_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
 const MULTI_CURRENCY_LABEL = "\u591a\u5e01\u79cd";
+const POSITIONS_SUB =
+  "\u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u65b9\u4fbf\u67e5\u770b\u7d2f\u8ba1\u6210\u672c\u3001\u5b9e\u65f6\u5e02\u503c\u548c\u6d6e\u52a8\u76c8\u4e8f\u3002";
+const RECORDS_SUB =
+  "\u4fdd\u7559\u6bcf\u4e00\u7b14\u539f\u59cb\u8f93\u5165\uff0c\u540e\u9762\u4f60\u60f3\u56de\u770b\u8282\u594f\u3001\u52a0\u4ed3\u65f6\u70b9\u4e5f\u4f1a\u6bd4\u8f83\u65b9\u4fbf\u3002";
+const FILTER_EMPTY_TEXT =
+  "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5b9a\u6295\u8bb0\u5f55\u3002";
+const RECORD_FILTER_EMPTY_TEXT =
+  "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u5b9a\u6295\u8bb0\u5f55\u3002";
+const NO_PRICE_TEXT = "\u7b49\u5f85\u884c\u60c5";
 const POSITION_COL_TICKER = "\u6807\u7684";
 const POSITION_COL_CLASS = "\u677f\u5757";
 const POSITION_COL_INVESTED = "\u7d2f\u8ba1\u6295\u5165";
 const POSITION_COL_QUANTITY = "\u7d2f\u8ba1\u6570\u91cf";
 const POSITION_COL_COST = "\u6301\u4ed3\u5747\u4ef7";
+const POSITION_COL_PRICE = "\u5f53\u524d\u4ef7";
+const POSITION_COL_VALUE = "\u5f53\u524d\u5e02\u503c";
+const POSITION_COL_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
 const POSITION_COL_COUNT = "\u6b21\u6570";
 const POSITION_COL_LAST = "\u6700\u8fd1\u4e00\u6b21";
 const RECORD_COL_DATE = "\u65e5\u671f";
@@ -60,6 +77,7 @@ const RECORD_COL_ASSET = "\u6807\u7684";
 const RECORD_COL_AMOUNT = "\u6295\u5165\u91d1\u989d";
 const RECORD_COL_BOUGHT = "\u4e70\u5165\u6570\u91cf";
 const RECORD_COL_PRICE = "\u672c\u6b21\u5747\u4ef7";
+const RECORD_COL_LIVE_PRICE = "\u5f53\u524d\u4ef7";
 const RECORD_COL_NOTE = "\u5907\u6ce8";
 const RECORD_COL_ACTION = "\u64cd\u4f5c";
 const ACTION_EDIT = "\u7f16\u8f91";
@@ -88,6 +106,45 @@ function buildCurrencyBreakdown(entries: DcaEntry[]) {
     .sort((a, b) => b.total - a.total);
 }
 
+function buildPositionCurrencyBreakdown(
+  positions: DcaPosition[],
+  selector: (position: DcaPosition) => number
+) {
+  const totals = new Map<Currency, number>();
+
+  positions.forEach((position) => {
+    totals.set(position.currency, (totals.get(position.currency) ?? 0) + selector(position));
+  });
+
+  return Array.from(totals.entries())
+    .map(([currency, total]) => ({ currency, total }))
+    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+}
+
+function getBreakdownText(
+  breakdown: Array<{ currency: Currency; total: number }>,
+  emptyHint = "\u6682\u65e0\u6570\u636e"
+) {
+  if (breakdown.length === 0) {
+    return { display: "--", hint: emptyHint };
+  }
+
+  if (breakdown.length === 1) {
+    return {
+      display: formatCurrency(breakdown[0].total, breakdown[0].currency),
+      hint: `${breakdown[0].currency} ${formatCurrency(breakdown[0].total, breakdown[0].currency)}`,
+    };
+  }
+
+  return {
+    display: MULTI_CURRENCY_LABEL,
+    hint: breakdown
+      .slice(0, 3)
+      .map(({ currency, total }) => `${currency} ${formatCurrency(total, currency)}`)
+      .join(" / "),
+  };
+}
+
 function buildPositions(entries: DcaEntry[]): DcaPosition[] {
   const grouped = new Map<string, DcaPosition>();
 
@@ -98,6 +155,13 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
     if (current) {
       current.totalInvestedAmount += entry.investedAmount;
       current.totalQuantity += entry.quantity;
+      if (entry.currentPrice != null && entry.currentPrice > 0) {
+        current.marketValue += entry.currentPrice * entry.quantity;
+        current.unrealizedPnl += entry.currentPrice * entry.quantity - entry.investedAmount;
+        current.currentPrice = current.marketValue / current.totalQuantity;
+      } else {
+        current.marketValue += entry.investedAmount;
+      }
       current.entriesCount += 1;
       if (entry.investedAt > current.lastInvestedAt) {
         current.lastInvestedAt = entry.investedAt;
@@ -118,6 +182,16 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
       totalInvestedAmount: entry.investedAmount,
       totalQuantity: entry.quantity,
       averageCost: entry.investedAmount / entry.quantity,
+      currentPrice:
+        entry.currentPrice != null && entry.currentPrice > 0 ? entry.currentPrice : undefined,
+      marketValue:
+        entry.currentPrice != null && entry.currentPrice > 0
+          ? entry.currentPrice * entry.quantity
+          : entry.investedAmount,
+      unrealizedPnl:
+        entry.currentPrice != null && entry.currentPrice > 0
+          ? entry.currentPrice * entry.quantity - entry.investedAmount
+          : 0,
       entriesCount: 1,
       lastInvestedAt: entry.investedAt,
     });
@@ -200,6 +274,14 @@ export function DcaView() {
     () => buildCurrencyBreakdown(filteredEntries),
     [filteredEntries]
   );
+  const marketValueBreakdown = useMemo(
+    () => buildPositionCurrencyBreakdown(positions, (position) => position.marketValue),
+    [positions]
+  );
+  const floatingPnlBreakdown = useMemo(
+    () => buildPositionCurrencyBreakdown(positions, (position) => position.unrealizedPnl),
+    [positions]
+  );
   const stockPositions = allPositions.filter((position) => position.assetClass === "stock").length;
   const cryptoPositions = allPositions.filter(
     (position) => position.assetClass === "crypto"
@@ -227,6 +309,14 @@ export function DcaView() {
       .map(({ currency, total }) => `${currency} ${formatCurrency(total, currency)}`)
       .join(" / ");
   }, [currencyBreakdown]);
+  const marketValueText = useMemo(
+    () => getBreakdownText(marketValueBreakdown),
+    [marketValueBreakdown]
+  );
+  const floatingPnlText = useMemo(
+    () => getBreakdownText(floatingPnlBreakdown),
+    [floatingPnlBreakdown]
+  );
 
   function handleNew() {
     setEditingEntry(null);
@@ -279,12 +369,22 @@ export function DcaView() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           <MetricCard label={METRIC_POSITIONS} value={String(allPositions.length)} />
           <MetricCard label={METRIC_RECORDS} value={String(entries.length)} />
           <MetricCard label={METRIC_STOCKS} value={String(stockPositions)} />
           <MetricCard label={METRIC_CRYPTOS} value={String(cryptoPositions)} />
           <MetricCard label={METRIC_INVESTED} value={investedDisplay} hint={investedHint} />
+          <MetricCard
+            label={METRIC_MARKET_VALUE}
+            value={marketValueText.display}
+            hint={marketValueText.hint}
+          />
+          <MetricCard
+            label={METRIC_FLOATING_PNL}
+            value={floatingPnlText.display}
+            hint={floatingPnlText.hint}
+          />
         </div>
 
         <Card className="space-y-4">
@@ -333,9 +433,7 @@ export function DcaView() {
             <Card noPadding className="overflow-hidden">
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-sm font-semibold text-text-primary">{POSITIONS_TITLE}</h2>
-                <p className="mt-1 text-xs text-text-muted">
-                  \u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u65b9\u4fbf\u67e5\u770b\u7d2f\u8ba1\u6210\u672c\u548c\u6301\u4ed3\u6570\u91cf\u3002
-                </p>
+                <p className="mt-1 text-xs text-text-muted">{POSITIONS_SUB}</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -346,6 +444,9 @@ export function DcaView() {
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_INVESTED}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_QUANTITY}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COST}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PRICE}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_VALUE}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PNL}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COUNT}</th>
                       <th className="px-5 py-3 text-right font-medium">{POSITION_COL_LAST}</th>
                     </tr>
@@ -353,8 +454,8 @@ export function DcaView() {
                   <tbody>
                     {positions.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-5 py-8 text-center text-sm text-text-muted">
-                          \u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5b9a\u6295\u8bb0\u5f55\u3002
+                        <td colSpan={10} className="px-5 py-8 text-center text-sm text-text-muted">
+                          {FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
@@ -390,6 +491,25 @@ export function DcaView() {
                             {formatPrice(position.averageCost, position.currency)}
                           </td>
                           <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                            {position.currentPrice != null
+                              ? formatPrice(position.currentPrice, position.currency)
+                              : NO_PRICE_TEXT}
+                          </td>
+                          <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
+                            {formatCurrency(position.marketValue, position.currency)}
+                          </td>
+                          <td
+                            className={cn(
+                              "px-4 py-4 text-right font-medium tabular-nums",
+                              position.unrealizedPnl > 0 && "text-profit",
+                              position.unrealizedPnl < 0 && "text-loss",
+                              position.unrealizedPnl === 0 && "text-text-secondary"
+                            )}
+                          >
+                            {position.unrealizedPnl > 0 ? "+" : ""}
+                            {formatCurrency(position.unrealizedPnl, position.currency)}
+                          </td>
+                          <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
                             {position.entriesCount}
                           </td>
                           <td className="px-5 py-4 text-right text-text-secondary tabular-nums">
@@ -406,9 +526,7 @@ export function DcaView() {
             <Card noPadding className="overflow-hidden">
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-sm font-semibold text-text-primary">{RECORDS_TITLE}</h2>
-                <p className="mt-1 text-xs text-text-muted">
-                  \u4fdd\u7559\u6bcf\u4e00\u7b14\u539f\u59cb\u8f93\u5165\uff0c\u540e\u9762\u4f60\u60f3\u56de\u770b\u8282\u594f\u3001\u52a0\u4ed3\u65f6\u70b9\u4e5f\u4f1a\u6bd4\u8f83\u65b9\u4fbf\u3002
-                </p>
+                <p className="mt-1 text-xs text-text-muted">{RECORDS_SUB}</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -419,6 +537,7 @@ export function DcaView() {
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_AMOUNT}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_BOUGHT}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_PRICE}</th>
+                      <th className="px-4 py-3 text-right font-medium">{RECORD_COL_LIVE_PRICE}</th>
                       <th className="px-4 py-3 text-left font-medium">{RECORD_COL_NOTE}</th>
                       <th className="px-5 py-3 text-right font-medium">{RECORD_COL_ACTION}</th>
                     </tr>
@@ -426,8 +545,8 @@ export function DcaView() {
                   <tbody>
                     {filteredEntries.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-5 py-8 text-center text-sm text-text-muted">
-                          \u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u5b9a\u6295\u8bb0\u5f55\u3002
+                        <td colSpan={8} className="px-5 py-8 text-center text-sm text-text-muted">
+                          {RECORD_FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
@@ -467,6 +586,11 @@ export function DcaView() {
                             </td>
                             <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
                               {formatPrice(averageCost, entry.currency)}
+                            </td>
+                            <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                              {entry.currentPrice != null && entry.currentPrice > 0
+                                ? formatPrice(entry.currentPrice, entry.quoteCurrency ?? entry.currency)
+                                : NO_PRICE_TEXT}
                             </td>
                             <td className="max-w-[220px] px-4 py-4 text-sm text-text-muted">
                               <p className="line-clamp-2">{entry.notes ?? "--"}</p>

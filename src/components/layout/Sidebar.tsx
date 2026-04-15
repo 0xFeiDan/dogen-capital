@@ -28,6 +28,8 @@ const NAV_ITEMS = [
   },
 ] as const;
 
+const NAV_LABEL = "\u5bfc\u822a";
+
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
@@ -77,7 +79,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           <p className="mb-2 px-2 text-2xs font-semibold uppercase tracking-widest text-text-muted">
-            \u5bfc\u822a
+            {NAV_LABEL}
           </p>
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);

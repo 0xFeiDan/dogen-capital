@@ -307,6 +307,28 @@ export async function deleteDcaEntryFromServer(profileId: AppUserId, entryId: st
   await parseJsonResponse<{ ok: true }>(response);
 }
 
+export async function updateDcaLivePricesOnServer(
+  profileId: AppUserId,
+  updates: Array<{
+    id: string;
+    currentPrice: number;
+    quoteSymbol?: string;
+    quoteCurrency?: DcaEntry["quoteCurrency"];
+    priceUpdatedAt?: string;
+  }>
+) {
+  const response = await fetch("/api/data/dca/live-prices", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profileId, updates }),
+  });
+
+  await parseJsonResponse<{ ok: true; count: number }>(response);
+}
+
 export async function importItemsToServer(params: {
   format: "trades-json" | "trades-csv" | "thoughts-json";
   mode: "merge" | "overwrite";

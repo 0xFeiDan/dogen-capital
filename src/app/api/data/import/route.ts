@@ -96,6 +96,22 @@ function parseDcaEntries(value: unknown, userId: keyof DcaByUser): DcaEntry[] {
         investedAt: entry.investedAt,
         investedAmount: entry.investedAmount,
         quantity: entry.quantity,
+        currentPrice:
+          typeof entry.currentPrice === "number" && Number.isFinite(entry.currentPrice)
+            ? entry.currentPrice
+            : undefined,
+        quoteSymbol:
+          typeof entry.quoteSymbol === "string" && entry.quoteSymbol.trim()
+            ? entry.quoteSymbol.trim().toUpperCase()
+            : undefined,
+        quoteCurrency:
+          typeof entry.quoteCurrency === "string" && entry.quoteCurrency.trim()
+            ? (entry.quoteCurrency as DcaEntry["quoteCurrency"])
+            : undefined,
+        priceUpdatedAt:
+          typeof entry.priceUpdatedAt === "string" && entry.priceUpdatedAt.trim()
+            ? entry.priceUpdatedAt
+            : undefined,
         notes:
           typeof entry.notes === "string" && entry.notes.trim()
             ? entry.notes.trim()

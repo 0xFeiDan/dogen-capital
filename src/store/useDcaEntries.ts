@@ -18,6 +18,15 @@ interface DcaEntriesActions {
   addEntry: (draft: Omit<DcaEntry, "id" | "createdAt" | "updatedAt">) => DcaEntry;
   upsertEntry: (entry: DcaEntry) => void;
   updateEntry: (id: string, updates: Partial<Omit<DcaEntry, "id" | "createdAt">>) => void;
+  applyLivePriceUpdates: (
+    updates: Array<{
+      id: string;
+      currentPrice: number;
+      quoteSymbol?: string;
+      quoteCurrency?: DcaEntry["quoteCurrency"];
+      priceUpdatedAt?: string;
+    }>
+  ) => void;
   deleteEntry: (id: string) => void;
   replaceAllDcaEntriesByUser: (dcaEntriesByUser: Partial<DcaEntriesByUser>) => void;
   importEntries: (entries: DcaEntry[]) => void;
@@ -59,6 +68,31 @@ function normalizeEntriesByUser(value?: Partial<DcaEntriesByUser>): DcaEntriesBy
     me: Array.isArray(value?.me) ? cloneEntries(value.me) : defaults.me,
     partner: Array.isArray(value?.partner) ? cloneEntries(value.partner) : defaults.partner,
   };
+}
+
+function mergeIncomingEntries(
+  currentEntries: DcaEntry[],
+  incomingEntries: DcaEntry[]
+): DcaEntry[] {
+  const currentById = new Map(currentEntries.map((entry) => [entry.id, entry] as const));
+
+  return cloneEntries(incomingEntries).map((incomingEntry) => {
+    const currentEntry = currentById.get(incomingEntry.id);
+    const incomingHasPrice =
+      incomingEntry.currentPrice != null && incomingEntry.currentPrice > 0;
+
+    if (currentEntry?.currentPrice != null && !incomingHasPrice) {
+      return {
+        ...incomingEntry,
+        currentPrice: currentEntry.currentPrice,
+        quoteSymbol: currentEntry.quoteSymbol,
+        quoteCurrency: currentEntry.quoteCurrency,
+        priceUpdatedAt: currentEntry.priceUpdatedAt,
+      };
+    }
+
+    return incomingEntry;
+  });
 }
 
 function getActiveUserId(): AppUserId {
@@ -134,6 +168,29 @@ export const useDcaEntries = create<DcaEntriesStore>()(
         );
       },
 
+      applyLivePriceUpdates(updates) {
+        if (updates.length === 0) return;
+
+        const updatesById = new Map(updates.map((update) => [update.id, update] as const));
+
+        set((state) =>
+          updateActiveUserEntries(state, (entries) =>
+            entries.map((entry) => {
+              const update = updatesById.get(entry.id);
+              if (!update) return entry;
+
+              return {
+                ...entry,
+                currentPrice: update.currentPrice,
+                quoteSymbol: update.quoteSymbol ?? entry.quoteSymbol,
+                quoteCurrency: update.quoteCurrency ?? entry.quoteCurrency,
+                priceUpdatedAt: update.priceUpdatedAt ?? new Date().toISOString(),
+              };
+            })
+          )
+        );
+      },
+
       deleteEntry(id) {
         set((state) =>
           updateActiveUserEntries(state, (entries) => entries.filter((entry) => entry.id !== id))
@@ -141,10 +198,20 @@ export const useDcaEntries = create<DcaEntriesStore>()(
       },
 
       replaceAllDcaEntriesByUser(dcaEntriesByUser) {
-        const normalized = normalizeEntriesByUser(dcaEntriesByUser);
-        set({
-          dcaEntriesByUser: normalized,
-          entries: getCurrentUserEntries(normalized),
+        set((state) => {
+          const normalizedIncoming = normalizeEntriesByUser(dcaEntriesByUser);
+          const mergedByUser: DcaEntriesByUser = {
+            me: mergeIncomingEntries(state.dcaEntriesByUser.me ?? [], normalizedIncoming.me),
+            partner: mergeIncomingEntries(
+              state.dcaEntriesByUser.partner ?? [],
+              normalizedIncoming.partner
+            ),
+          };
+
+          return {
+            dcaEntriesByUser: mergedByUser,
+            entries: getCurrentUserEntries(mergedByUser),
+          };
         });
       },
 

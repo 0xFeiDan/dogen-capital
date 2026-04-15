@@ -4,10 +4,17 @@ import {
   normalizeBinanceSymbol,
   type BinanceBookTickerSnapshot,
 } from "@/lib/pricing";
+import type { DcaMarketQuote } from "@/lib/dca-pricing";
 import type { BinanceMarketType } from "@/types";
 
 interface BinanceQuotesResponse {
   quotes: BinanceBookTickerSnapshot[];
+  fetchedAt: string;
+  error?: string;
+}
+
+interface DcaQuotesResponse {
+  quotes: DcaMarketQuote[];
   fetchedAt: string;
   error?: string;
 }
@@ -56,4 +63,26 @@ export async function fetchBinanceQuote(params: {
         normalizeBinanceSymbol(quote.symbol) === symbol
     ) ?? null
   );
+}
+
+export async function fetchDcaQuotes(params: {
+  cryptoSymbols: string[];
+  stockSymbols: string[];
+}): Promise<DcaMarketQuote[]> {
+  const response = await fetch("/api/market/dca/quotes", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  const data = (await response.json()) as DcaQuotesResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to fetch DCA market quotes");
+  }
+
+  return data.quotes ?? [];
 }

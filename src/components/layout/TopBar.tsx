@@ -14,6 +14,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dca": "\u5b9a\u6295",
   "/thoughts": "\u601d\u8003\u7b14\u8bb0",
 };
+const DATA_MANAGEMENT_LABEL = "\u6570\u636e\u7ba1\u7406";
+const LOGOUT_LABEL = "\u9000\u51fa";
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -93,7 +95,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             title="\u5bfc\u5165\u6216\u5bfc\u51fa\u6570\u636e"
           >
             <Database className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">\u6570\u636e\u7ba1\u7406</span>
+            <span className="hidden sm:inline">{DATA_MANAGEMENT_LABEL}</span>
           </button>
 
           <button
@@ -120,7 +122,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             title="\u9000\u51fa\u767b\u5f55"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">\u9000\u51fa</span>
+            <span className="hidden sm:inline">{LOGOUT_LABEL}</span>
           </button>
         </div>
       </header>

@@ -2,10 +2,12 @@ import { useMemo } from "react";
 import { useTrades } from "./useTrades";
 import { useThoughts } from "./useThoughts";
 import { usePortfolioSettings } from "./usePortfolioSettings";
+import { useDcaEntries } from "./useDcaEntries";
 import type {
   ActivityItem,
   AssetBreakdown,
   AssetClass,
+  DcaEntry,
   DurationBucket,
   EquityPoint,
   MonthlyPnl,
@@ -44,7 +46,43 @@ export function computeUnrealisedPnL(
   return { gross, net, percent, isWin: net > 0 };
 }
 
-export function computePortfolioStats(trades: Trade[]): PortfolioStats {
+function isDashboardDcaEntry(entry: DcaEntry): boolean {
+  return entry.currency === "USD" && (!entry.quoteCurrency || entry.quoteCurrency === "USD");
+}
+
+function computeDcaUnrealisedPnL(entries: DcaEntry[]) {
+  const dashboardEntries = entries.filter(isDashboardDcaEntry);
+  const pricedEntries = dashboardEntries.filter(
+    (entry) => entry.currentPrice != null && entry.currentPrice > 0
+  );
+  const dcaInvested = dashboardEntries.reduce(
+    (sum, entry) => sum + entry.investedAmount,
+    0
+  );
+  const dcaMarketValue = dashboardEntries.reduce((sum, entry) => {
+    const price = entry.currentPrice ?? entry.investedAmount / entry.quantity;
+    return sum + price * entry.quantity;
+  }, 0);
+  const dcaUnrealisedNetPnl = pricedEntries.reduce(
+    (sum, entry) => sum + entry.currentPrice! * entry.quantity - entry.investedAmount,
+    0
+  );
+  const dcaPositions = new Set(
+    dashboardEntries.map((entry) => `${entry.assetClass}:${entry.currency}:${entry.ticker}`)
+  ).size;
+
+  return {
+    dcaInvested,
+    dcaMarketValue,
+    dcaUnrealisedNetPnl,
+    dcaPositions,
+  };
+}
+
+export function computePortfolioStats(
+  trades: Trade[],
+  dcaEntries: DcaEntry[] = []
+): PortfolioStats {
   const closed = trades.filter((trade) => trade.status === "closed");
   const open = trades.filter((trade) => trade.status === "open");
 
@@ -62,7 +100,14 @@ export function computePortfolioStats(trades: Trade[]): PortfolioStats {
 
   const totalNetPnl = pnls.reduce((sum, item) => sum + item.pnl.net, 0);
   const totalGrossPnl = pnls.reduce((sum, item) => sum + item.pnl.gross, 0);
-  const unrealisedNetPnl = unrealisedPnls.reduce((sum, pnl) => sum + pnl.net, 0);
+  const tradeUnrealisedNetPnl = unrealisedPnls.reduce((sum, pnl) => sum + pnl.net, 0);
+  const {
+    dcaInvested,
+    dcaMarketValue,
+    dcaUnrealisedNetPnl,
+    dcaPositions,
+  } = computeDcaUnrealisedPnL(dcaEntries);
+  const unrealisedNetPnl = tradeUnrealisedNetPnl + dcaUnrealisedNetPnl;
   const combinedNetPnl = totalNetPnl + unrealisedNetPnl;
   const totalWins = wins.reduce((sum, item) => sum + item.pnl.net, 0);
   const totalLosses = Math.abs(
@@ -98,6 +143,11 @@ export function computePortfolioStats(trades: Trade[]): PortfolioStats {
     combinedNetPnl,
     totalNetPnl,
     totalGrossPnl,
+    tradeUnrealisedNetPnl,
+    dcaUnrealisedNetPnl,
+    dcaMarketValue,
+    dcaInvested,
+    dcaPositions,
     avgWin,
     avgLoss,
     bestTrade,
@@ -206,7 +256,8 @@ export function computeAssetBreakdown(trades: Trade[]): AssetBreakdown[] {
 
 export function computePortfolioAllocation(
   trades: Trade[],
-  initialCapital: number
+  initialCapital: number,
+  dcaEntries: DcaEntry[] = []
 ): PortfolioAllocation[] {
   const openTrades = trades.filter((trade) => trade.status === "open");
   const realisedPnl = trades
@@ -227,6 +278,13 @@ export function computePortfolioAllocation(
     option: "期权",
     other: "其他",
   };
+
+  assetLabels.stock = "\u80a1\u7968";
+  assetLabels.crypto = "\u865a\u62df\u8d27\u5e01";
+  assetLabels.forex = "\u5916\u6c47";
+  assetLabels.futures = "\u671f\u8d27";
+  assetLabels.option = "\u671f\u6743";
+  assetLabels.other = "\u5176\u4ed6";
 
   let cashValue = initialCapital + realisedPnl;
 
@@ -251,6 +309,24 @@ export function computePortfolioAllocation(
     }
   }
 
+  for (const entry of dcaEntries.filter(isDashboardDcaEntry)) {
+    const price = entry.currentPrice ?? entry.investedAmount / entry.quantity;
+    const marketValue = price * entry.quantity;
+    const existing = allocationMap.get(entry.assetClass) ?? {
+      label: assetLabels[entry.assetClass],
+      value: 0,
+      count: 0,
+    };
+
+    allocationMap.set(entry.assetClass, {
+      ...existing,
+      value: existing.value + Math.abs(marketValue),
+      count: existing.count + 1,
+    });
+
+    cashValue -= entry.investedAmount;
+  }
+
   const rows: PortfolioAllocation[] = Array.from(allocationMap.entries()).map(
     ([assetClass, entry]) => ({
       key: assetClass,
@@ -267,6 +343,11 @@ export function computePortfolioAllocation(
     value: Math.round(Math.max(cashValue, 0) * 100) / 100,
     percent: 0,
   });
+
+  const cashRow = rows.find((item) => item.key === "cash");
+  if (cashRow) {
+    cashRow.label = "\u73b0\u91d1 / \u672c\u4f4d";
+  }
 
   const total = rows.reduce((sum, item) => sum + item.value, 0);
 
@@ -303,7 +384,8 @@ export function computeRecentActivity(
 
 export function usePortfolioStats(): PortfolioStats {
   const trades = useTrades((state) => state.trades);
-  return useMemo(() => computePortfolioStats(trades), [trades]);
+  const dcaEntries = useDcaEntries((state) => state.entries);
+  return useMemo(() => computePortfolioStats(trades, dcaEntries), [dcaEntries, trades]);
 }
 
 export function useEquityCurve(): EquityPoint[] {
@@ -328,11 +410,12 @@ export function useAssetBreakdown(): AssetBreakdown[] {
 
 export function usePortfolioAllocation(): PortfolioAllocation[] {
   const trades = useTrades((state) => state.trades);
+  const dcaEntries = useDcaEntries((state) => state.entries);
   const initialCapital = usePortfolioSettings((state) => state.initialCapital);
 
   return useMemo(
-    () => computePortfolioAllocation(trades, initialCapital),
-    [initialCapital, trades]
+    () => computePortfolioAllocation(trades, initialCapital, dcaEntries),
+    [dcaEntries, initialCapital, trades]
   );
 }
 

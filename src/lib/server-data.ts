@@ -77,6 +77,10 @@ async function ensureDatabaseSchema() {
       "investedAt" TEXT NOT NULL,
       "investedAmount" REAL NOT NULL,
       "quantity" REAL NOT NULL,
+      "currentPrice" REAL,
+      "quoteSymbol" TEXT,
+      "quoteCurrency" TEXT,
+      "priceUpdatedAt" TEXT,
       "notes" TEXT,
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
@@ -153,6 +157,35 @@ async function ensureDatabaseSchema() {
   if (!tradeColumnNames.has("binanceSymbol")) {
     await db.$executeRawUnsafe(
       `ALTER TABLE "TradeRecord" ADD COLUMN "binanceSymbol" TEXT`
+    );
+  }
+
+  const dcaColumns = await db.$queryRawUnsafe<Array<{ name: string }>>(
+    `PRAGMA table_info("DcaRecord")`
+  );
+  const dcaColumnNames = new Set(dcaColumns.map((column) => column.name));
+
+  if (!dcaColumnNames.has("currentPrice")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "currentPrice" REAL`
+    );
+  }
+
+  if (!dcaColumnNames.has("quoteSymbol")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "quoteSymbol" TEXT`
+    );
+  }
+
+  if (!dcaColumnNames.has("quoteCurrency")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "quoteCurrency" TEXT`
+    );
+  }
+
+  if (!dcaColumnNames.has("priceUpdatedAt")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "priceUpdatedAt" TEXT`
     );
   }
 }
@@ -397,6 +430,10 @@ function toDcaEntry(record: {
   investedAt: string;
   investedAmount: number;
   quantity: number;
+  currentPrice: number | null;
+  quoteSymbol: string | null;
+  quoteCurrency: string | null;
+  priceUpdatedAt: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -414,6 +451,12 @@ function toDcaEntry(record: {
     investedAt: record.investedAt,
     investedAmount: record.investedAmount,
     quantity: record.quantity,
+    currentPrice: record.currentPrice ?? undefined,
+    quoteSymbol: record.quoteSymbol ?? undefined,
+    quoteCurrency: record.quoteCurrency
+      ? (record.quoteCurrency as DcaEntry["quoteCurrency"])
+      : undefined,
+    priceUpdatedAt: record.priceUpdatedAt ?? undefined,
     notes: record.notes ?? undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -643,6 +686,10 @@ export async function upsertDcaEntry(
     investedAt: entry.investedAt,
     investedAmount: entry.investedAmount,
     quantity: entry.quantity,
+    currentPrice: entry.currentPrice ?? null,
+    quoteSymbol: entry.quoteSymbol ?? null,
+    quoteCurrency: entry.quoteCurrency ?? null,
+    priceUpdatedAt: entry.priceUpdatedAt ?? null,
     notes: entry.notes ?? null,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -755,6 +802,77 @@ export async function updateTradeCurrentPrices(
   });
 }
 
+export async function updateDcaCurrentPrices(
+  profileId: AppUserId,
+  updates: Array<{
+    id: string;
+    currentPrice: number;
+    quoteSymbol?: string;
+    quoteCurrency?: string;
+    priceUpdatedAt?: string;
+  }>
+) {
+  await ensureServerSetup();
+
+  const normalizedUpdates = updates.filter(
+    (update) =>
+      typeof update.id === "string" &&
+      update.id.length > 0 &&
+      Number.isFinite(update.currentPrice) &&
+      update.currentPrice > 0
+  );
+
+  if (normalizedUpdates.length === 0) {
+    return 0;
+  }
+
+  return db.$transaction(async (tx) => {
+    const candidateIds = Array.from(
+      new Set(
+        normalizedUpdates.flatMap((update) => [
+          update.id,
+          toScopedId(profileId, update.id),
+        ])
+      )
+    );
+
+    const existingRecords = await tx.dcaRecord.findMany({
+      where: {
+        profileId,
+        id: { in: candidateIds },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const recordIdByLogicalId = new Map<string, string>();
+    existingRecords.forEach((record) => {
+      recordIdByLogicalId.set(fromScopedId(profileId, record.id), record.id);
+    });
+
+    let updatedCount = 0;
+
+    for (const update of normalizedUpdates) {
+      const recordId = recordIdByLogicalId.get(update.id);
+      if (!recordId) continue;
+
+      await tx.dcaRecord.update({
+        where: { id: recordId },
+        data: {
+          currentPrice: update.currentPrice,
+          quoteSymbol: update.quoteSymbol ?? null,
+          quoteCurrency: update.quoteCurrency ?? null,
+          priceUpdatedAt: update.priceUpdatedAt ?? new Date().toISOString(),
+        },
+      });
+      updatedCount += 1;
+    }
+
+    return updatedCount;
+  });
+}
+
 async function replaceProfileTrades(profileId: AppUserId, trades: Trade[]) {
   await db.$transaction(async (tx) => {
     await tx.tradeRecord.deleteMany({ where: { profileId } });
@@ -834,6 +952,10 @@ async function replaceProfileDcaEntries(profileId: AppUserId, entries: DcaEntry[
           investedAt: entry.investedAt,
           investedAmount: entry.investedAmount,
           quantity: entry.quantity,
+          currentPrice: entry.currentPrice ?? null,
+          quoteSymbol: entry.quoteSymbol ?? null,
+          quoteCurrency: entry.quoteCurrency ?? null,
+          priceUpdatedAt: entry.priceUpdatedAt ?? null,
           notes: entry.notes ?? null,
           createdAt: entry.createdAt,
           updatedAt: entry.updatedAt,

@@ -80,6 +80,10 @@ export interface DcaEntry {
   investedAt: string;
   investedAmount: number;
   quantity: number;
+  currentPrice?: number;
+  quoteSymbol?: string;
+  quoteCurrency?: Currency;
+  priceUpdatedAt?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -97,6 +101,11 @@ export interface PortfolioStats {
   combinedNetPnl: number;
   totalNetPnl: number;
   totalGrossPnl: number;
+  tradeUnrealisedNetPnl: number;
+  dcaUnrealisedNetPnl: number;
+  dcaMarketValue: number;
+  dcaInvested: number;
+  dcaPositions: number;
   avgWin: number;
   avgLoss: number;
   bestTrade: Trade | null;

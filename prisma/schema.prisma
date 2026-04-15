@@ -76,6 +76,10 @@ model DcaRecord {
   investedAt     String
   investedAmount Float
   quantity       Float
+  currentPrice   Float?
+  quoteSymbol    String?
+  quoteCurrency  String?
+  priceUpdatedAt String?
   notes          String?
   createdAt      String
   updatedAt      String
