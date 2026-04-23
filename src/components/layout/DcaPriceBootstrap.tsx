@@ -118,7 +118,7 @@ export function DcaPriceBootstrap() {
     } finally {
       requestInFlightRef.current = false;
     }
-  }, [activeUserId, applyLivePriceUpdates, entries, hydrated, quoteEntries]);
+  }, [activeUserId, applyLivePriceUpdates, hydrated, quoteEntries]);
 
   useEffect(() => {
     if (!hydrated || quoteEntries.length === 0) {
@@ -147,9 +147,7 @@ export function DcaPriceBootstrap() {
       window.removeEventListener("focus", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-    // Use stable key instead of quoteEntries array reference.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, quoteEntryKey]);
+  }, [hydrated, quoteEntries.length, quoteEntryKey, refreshQuotes]);
 
   return null;
 }

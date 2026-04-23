@@ -1,4 +1,10 @@
-import type { Currency, DcaAssetClass, DcaEntry, DcaEntrySide } from "@/types";
+import type {
+  Currency,
+  DcaAssetClass,
+  DcaEntry,
+  DcaEntrySide,
+  DcaValuationStatus,
+} from "@/types";
 
 const DCA_EPSILON = 1e-8;
 
@@ -26,8 +32,9 @@ export interface DcaPositionSummary {
   remainingQuantity: number;
   remainingCostBasis: number;
   averageCost: number;
-  marketValue: number;
-  unrealizedPnl: number;
+  marketValue?: number;
+  unrealizedPnl?: number;
+  valuationStatus: DcaValuationStatus;
   realisedPnl: number;
   entriesCount: number;
   latestEntry: DcaEntry;
@@ -97,6 +104,10 @@ function pickLatestPricedEntry(
   }
 
   return isSameOrNewerEntry(candidate, current) ? candidate : current;
+}
+
+function canCompareValuation(currency: Currency, quoteCurrency?: Currency): boolean {
+  return !quoteCurrency || quoteCurrency === currency;
 }
 
 export function buildDcaPositionSummaries(entries: DcaEntry[]): {
@@ -199,10 +210,20 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
         : undefined;
     const averageCost =
       normalizedQuantity > DCA_EPSILON ? normalizedCostBasis / normalizedQuantity : 0;
+    const valuationStatus: DcaValuationStatus =
+      currentPrice == null
+        ? "missing-price"
+        : canCompareValuation(firstEntry.currency, latestPricedEntry?.quoteCurrency)
+          ? "ready"
+          : "currency-mismatch";
     const marketValue =
-      currentPrice != null ? currentPrice * normalizedQuantity : normalizedCostBasis;
+      valuationStatus === "ready" && currentPrice != null
+        ? currentPrice * normalizedQuantity
+        : undefined;
     const unrealizedPnl =
-      currentPrice != null ? marketValue - normalizedCostBasis : 0;
+      valuationStatus === "ready" && marketValue != null
+        ? marketValue - normalizedCostBasis
+        : undefined;
 
     positions.push({
       key,
@@ -219,8 +240,9 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
       remainingQuantity: normalizedQuantity,
       remainingCostBasis: normalizedCostBasis,
       averageCost: roundPrice(averageCost),
-      marketValue: roundMoney(marketValue),
-      unrealizedPnl: roundMoney(unrealizedPnl),
+      marketValue: marketValue != null ? roundMoney(marketValue) : undefined,
+      unrealizedPnl: unrealizedPnl != null ? roundMoney(unrealizedPnl) : undefined,
+      valuationStatus,
       realisedPnl: roundMoney(realisedPnl),
       entriesCount: sortedEntries.length,
       latestEntry,

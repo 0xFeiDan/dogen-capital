@@ -59,11 +59,11 @@ function computeDcaUnrealisedPnL(entries: DcaEntry[]) {
     0
   );
   const dcaMarketValue = activePositions.reduce(
-    (sum, position) => sum + position.marketValue,
+    (sum, position) => sum + (position.marketValue ?? 0),
     0
   );
   const dcaUnrealisedNetPnl = activePositions.reduce(
-    (sum, position) => sum + position.unrealizedPnl,
+    (sum, position) => sum + (position.unrealizedPnl ?? 0),
     0
   );
   const dcaRealisedNetPnl = computedEntries.reduce(
@@ -348,7 +348,7 @@ export function computePortfolioAllocation(
 
     allocationMap.set(position.assetClass, {
       ...existing,
-      value: existing.value + Math.abs(position.marketValue),
+      value: existing.value + Math.abs(position.marketValue ?? 0),
       count: existing.count + 1,
     });
   }

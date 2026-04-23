@@ -391,12 +391,16 @@ export async function downloadServerExport(
     const rawText = await response.text();
 
     if (rawText.trim()) {
+      let parsedError: string | undefined;
+
       try {
         const data = JSON.parse(rawText) as { error?: string };
-        throw new Error(data.error ?? "下载失败");
+        parsedError = data.error?.trim() || undefined;
       } catch {
-        throw new Error(rawText.trim() || "下载失败");
+        parsedError = undefined;
       }
+
+      throw new Error(parsedError ?? (rawText.trim() || "下载失败"));
     }
 
     throw new Error("下载失败");

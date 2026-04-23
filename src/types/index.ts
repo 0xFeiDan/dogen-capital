@@ -91,6 +91,8 @@ export interface DcaEntry {
   updatedAt: string;
 }
 
+export type DcaValuationStatus = "ready" | "missing-price" | "currency-mismatch";
+
 // ─── Portfolio stats (derived) ────────���───────────────────────────────────────
 
 export interface PortfolioStats {

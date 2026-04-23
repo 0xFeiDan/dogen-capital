@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import {
   pauseSync,
@@ -115,7 +115,10 @@ export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftVal
     }
   }
 
-  const initialValues = editingEntry ? dcaToForm(editingEntry) : draftValues ?? EMPTY_DCA_FORM;
+  const initialValues = useMemo(
+    () => (editingEntry ? dcaToForm(editingEntry) : draftValues ?? EMPTY_DCA_FORM),
+    [draftValues, editingEntry]
+  );
   const [liveValues, setLiveValues] = useState<DcaFormState>(initialValues);
 
   useEffect(() => {

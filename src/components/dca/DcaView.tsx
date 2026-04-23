@@ -48,6 +48,8 @@ const RECORDS_SUB =
 const FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5269\u4f59\u6301\u4ed3\u3002";
 const RECORD_FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u6d41\u6c34\u8bb0\u5f55\u3002";
 const NO_PRICE_TEXT = "\u7b49\u5f85\u884c\u60c5";
+const VALUE_UNAVAILABLE_TEXT = "--";
+const VALUE_CURRENCY_MISMATCH_TEXT = "\u5e01\u79cd\u4e0d\u4e00\u81f4";
 const POSITION_COL_TICKER = "\u6807\u7684";
 const POSITION_COL_CLASS = "\u677f\u5757";
 const POSITION_COL_COST = "\u5269\u4f59\u672c\u91d1";
@@ -94,6 +96,12 @@ function getAssetClassLabel(assetClass: DcaAssetClass): string {
 
 function getSideLabel(entry: Pick<DcaEntry, "side">): string {
   return entry.side === "sell" ? SIDE_SELL : SIDE_BUY;
+}
+
+function getValuationText(position: DcaPositionSummary): string {
+  return position.valuationStatus === "currency-mismatch"
+    ? VALUE_CURRENCY_MISMATCH_TEXT
+    : VALUE_UNAVAILABLE_TEXT;
 }
 
 function buildCurrencyBreakdown(
@@ -250,20 +258,24 @@ export function DcaView() {
   const marketValueBreakdown = useMemo(
     () =>
       buildCurrencyBreakdown(
-        filteredActivePositions.map((position) => ({
-          currency: position.currency,
-          value: position.marketValue,
-        }))
+        filteredActivePositions
+          .filter((position) => position.marketValue != null)
+          .map((position) => ({
+            currency: position.currency,
+            value: position.marketValue ?? 0,
+          }))
       ),
     [filteredActivePositions]
   );
   const floatingPnlBreakdown = useMemo(
     () =>
       buildCurrencyBreakdown(
-        filteredActivePositions.map((position) => ({
-          currency: position.currency,
-          value: position.unrealizedPnl,
-        }))
+        filteredActivePositions
+          .filter((position) => position.unrealizedPnl != null)
+          .map((position) => ({
+            currency: position.currency,
+            value: position.unrealizedPnl ?? 0,
+          }))
       ),
     [filteredActivePositions]
   );
@@ -529,18 +541,32 @@ export function DcaView() {
                               : NO_PRICE_TEXT}
                           </td>
                           <td className="px-4 py-4 text-center font-medium text-text-primary tabular-nums">
-                            {formatCurrency(position.marketValue, position.currency)}
+                            {position.marketValue != null
+                              ? formatCurrency(position.marketValue, position.currency)
+                              : getValuationText(position)}
                           </td>
                           <td
                             className={cn(
                               "px-4 py-4 text-center font-medium tabular-nums",
-                              position.unrealizedPnl > 0 && "text-profit",
-                              position.unrealizedPnl < 0 && "text-loss",
-                              position.unrealizedPnl === 0 && "text-text-secondary"
+                              position.unrealizedPnl != null &&
+                                position.unrealizedPnl > 0 &&
+                                "text-profit",
+                              position.unrealizedPnl != null &&
+                                position.unrealizedPnl < 0 &&
+                                "text-loss",
+                              (position.unrealizedPnl == null ||
+                                position.unrealizedPnl === 0) &&
+                                "text-text-secondary"
                             )}
                           >
-                            {position.unrealizedPnl > 0 ? "+" : ""}
-                            {formatCurrency(position.unrealizedPnl, position.currency)}
+                            {position.unrealizedPnl != null ? (
+                              <>
+                                {position.unrealizedPnl > 0 ? "+" : ""}
+                                {formatCurrency(position.unrealizedPnl, position.currency)}
+                              </>
+                            ) : (
+                              getValuationText(position)
+                            )}
                           </td>
                           <td
                             className={cn(
