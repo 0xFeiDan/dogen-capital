@@ -23,6 +23,13 @@ function isValidDcaEntry(entry: DcaEntry | undefined): entry is DcaEntry {
       entry.investedAmount > 0 &&
       Number.isFinite(entry.quantity) &&
       entry.quantity > 0 &&
+      (entry.takeProfitMode == null ||
+        entry.takeProfitMode === "price" ||
+        entry.takeProfitMode === "percent") &&
+      (entry.takeProfitPrice == null ||
+        (Number.isFinite(entry.takeProfitPrice) && entry.takeProfitPrice > 0)) &&
+      (entry.takeProfitPercent == null ||
+        (Number.isFinite(entry.takeProfitPercent) && entry.takeProfitPercent > 0)) &&
       typeof entry.createdAt === "string" &&
       typeof entry.updatedAt === "string"
   );

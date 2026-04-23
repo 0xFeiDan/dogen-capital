@@ -5,6 +5,7 @@ export type TradeStatus = "open" | "closed";
 export type TradePricingMode = "manual" | "binance";
 export type BinanceMarketType = "spot" | "usdm-futures";
 export type DcaAssetClass = "stock" | "crypto";
+export type DcaTakeProfitMode = "price" | "percent";
 export type AssetClass =
   | "stock"
   | "etf"
@@ -84,6 +85,9 @@ export interface DcaEntry {
   quoteSymbol?: string;
   quoteCurrency?: Currency;
   priceUpdatedAt?: string;
+  takeProfitMode?: DcaTakeProfitMode;
+  takeProfitPrice?: number;
+  takeProfitPercent?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;

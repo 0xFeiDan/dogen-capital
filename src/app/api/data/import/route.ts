@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
+import { normalizeDcaTakeProfit } from "@/lib/dca";
 import { jsonToDcaEntries, jsonToThoughts, jsonToTrades } from "@/lib/io";
 import {
   importBackup,
@@ -68,6 +69,11 @@ function parseDcaEntries(value: unknown, userId: keyof DcaByUser): DcaEntry[] {
     }
 
     const entry = item as Partial<DcaEntry>;
+    const takeProfit = normalizeDcaTakeProfit({
+      takeProfitMode: entry.takeProfitMode,
+      takeProfitPrice: entry.takeProfitPrice,
+      takeProfitPercent: entry.takeProfitPercent,
+    });
 
     if (
       typeof entry.id !== "string" ||
@@ -113,6 +119,9 @@ function parseDcaEntries(value: unknown, userId: keyof DcaByUser): DcaEntry[] {
           typeof entry.priceUpdatedAt === "string" && entry.priceUpdatedAt.trim()
             ? entry.priceUpdatedAt
             : undefined,
+        takeProfitMode: takeProfit.takeProfitMode,
+        takeProfitPrice: takeProfit.takeProfitPrice,
+        takeProfitPercent: takeProfit.takeProfitPercent,
         notes:
           typeof entry.notes === "string" && entry.notes.trim()
             ? entry.notes.trim()

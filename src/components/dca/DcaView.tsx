@@ -5,11 +5,12 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
+import { getDcaTakeProfitTargetPrice, normalizeDcaTakeProfit } from "@/lib/dca";
 import { deleteDcaEntryFromServer } from "@/lib/server-sync-client";
-import { cn, formatCurrency, formatDate, formatPrice } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatPercent, formatPrice } from "@/lib/utils";
 import { useAppUsers } from "@/store/useAppUsers";
 import { useDcaEntries } from "@/store/useDcaEntries";
-import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
+import type { Currency, DcaAssetClass, DcaEntry, DcaTakeProfitMode } from "@/types";
 import { DcaDrawer } from "./DcaDrawer";
 import { dcaToForm, type DcaFormState } from "./DcaForm";
 
@@ -30,6 +31,11 @@ interface DcaPosition {
   unrealizedPnl: number;
   entriesCount: number;
   lastInvestedAt: string;
+  takeProfitMode?: DcaTakeProfitMode;
+  takeProfitPrice?: number;
+  takeProfitPercent?: number;
+  takeProfitTargetPrice?: number;
+  takeProfitTriggered: boolean;
 }
 
 const PAGE_BLURB =
@@ -72,6 +78,7 @@ const POSITION_COL_COST = "\u6301\u4ed3\u5747\u4ef7";
 const POSITION_COL_PRICE = "\u5f53\u524d\u4ef7";
 const POSITION_COL_VALUE = "\u5f53\u524d\u5e02\u503c";
 const POSITION_COL_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
+const POSITION_COL_TAKE_PROFIT = "\u6b62\u76c8";
 const POSITION_COL_COUNT = "\u6b21\u6570";
 const POSITION_COL_LAST = "\u6700\u8fd1\u4e00\u6b21";
 const RECORD_COL_DATE = "\u65e5\u671f";
@@ -80,11 +87,20 @@ const RECORD_COL_AMOUNT = "\u6295\u5165\u91d1\u989d";
 const RECORD_COL_BOUGHT = "\u4e70\u5165\u6570\u91cf";
 const RECORD_COL_PRICE = "\u672c\u6b21\u5747\u4ef7";
 const RECORD_COL_LIVE_PRICE = "\u5f53\u524d\u4ef7";
+const RECORD_COL_TAKE_PROFIT = "\u6b62\u76c8";
 const RECORD_COL_NOTE = "\u5907\u6ce8";
 const RECORD_COL_ACTION = "\u64cd\u4f5c";
 const ACTION_EDIT = "\u7f16\u8f91";
 const ACTION_REPEAT = "\u518d\u6295";
 const ACTION_DELETE = "\u5220\u9664";
+const TAKE_PROFIT_ALERT_TITLE = "\u6b62\u76c8\u63d0\u9192";
+const TAKE_PROFIT_ALERT_EMPTY = "\u5f53\u524d\u6ca1\u6709\u89e6\u53d1\u7684\u6b62\u76c8\u6807\u7684\u3002";
+const TAKE_PROFIT_TRIGGERED = "\u5df2\u89e6\u53d1";
+const TAKE_PROFIT_NOT_SET = "\u672a\u8bbe\u7f6e";
+const TAKE_PROFIT_MODE_PRICE = "\u76ee\u6807\u4ef7";
+const TAKE_PROFIT_MODE_PERCENT = "\u6536\u76ca\u7387";
+const TAKE_PROFIT_NOT_SET_HINT = "\u8fd8\u6ca1\u6709\u8bbe\u7f6e\u6b62\u76c8\u89c4\u5219";
+const TAKE_PROFIT_TRIGGERED_HINT = "\u5f53\u524d\u4ef7\u5df2\u5230\u8fbe\u6b62\u76c8\u6761\u4ef6";
 
 function todayInputDate() {
   const now = new Date();
@@ -101,6 +117,14 @@ function formatQuantity(value: number): string {
 
 function getAssetClassLabel(assetClass: DcaAssetClass): string {
   return assetClass === "stock" ? FILTER_STOCK : FILTER_CRYPTO;
+}
+
+function isNewerDcaEntry(candidate: DcaEntry, current: DcaEntry): boolean {
+  if (candidate.investedAt !== current.investedAt) {
+    return candidate.investedAt > current.investedAt;
+  }
+
+  return candidate.updatedAt > current.updatedAt;
 }
 
 function buildCurrencyBreakdown(entries: DcaEntry[]) {
@@ -160,6 +184,7 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
   entries.forEach((entry) => {
     const key = `${entry.assetClass}:${entry.currency}:${entry.ticker}`;
     const current = grouped.get(key);
+    const takeProfit = normalizeDcaTakeProfit(entry);
 
     if (current) {
       current.totalInvestedAmount += entry.investedAmount;
@@ -172,16 +197,29 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
         current.marketValue += entry.investedAmount;
       }
       current.entriesCount += 1;
-      if (entry.investedAt > current.lastInvestedAt) {
+      if (isNewerDcaEntry(entry, current.repeatEntry)) {
         current.lastInvestedAt = entry.investedAt;
         current.repeatEntry = entry;
+        current.takeProfitMode = takeProfit.takeProfitMode;
+        current.takeProfitPrice = takeProfit.takeProfitPrice;
+        current.takeProfitPercent = takeProfit.takeProfitPercent;
       }
       if (!current.name && entry.name) {
         current.name = entry.name;
       }
       current.averageCost = current.totalInvestedAmount / current.totalQuantity;
+      current.takeProfitTargetPrice = getDcaTakeProfitTargetPrice(current, current.averageCost);
+      current.takeProfitTriggered =
+        current.currentPrice != null &&
+        current.takeProfitTargetPrice != null &&
+        current.currentPrice >= current.takeProfitTargetPrice;
       return;
     }
+
+    const averageCost = entry.investedAmount / entry.quantity;
+    const currentPrice =
+      entry.currentPrice != null && entry.currentPrice > 0 ? entry.currentPrice : undefined;
+    const takeProfitTargetPrice = getDcaTakeProfitTargetPrice(takeProfit, averageCost);
 
     grouped.set(key, {
       key,
@@ -192,19 +230,26 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
       currency: entry.currency,
       totalInvestedAmount: entry.investedAmount,
       totalQuantity: entry.quantity,
-      averageCost: entry.investedAmount / entry.quantity,
-      currentPrice:
-        entry.currentPrice != null && entry.currentPrice > 0 ? entry.currentPrice : undefined,
+      averageCost,
+      currentPrice,
       marketValue:
-        entry.currentPrice != null && entry.currentPrice > 0
-          ? entry.currentPrice * entry.quantity
+        currentPrice != null
+          ? currentPrice * entry.quantity
           : entry.investedAmount,
       unrealizedPnl:
-        entry.currentPrice != null && entry.currentPrice > 0
-          ? entry.currentPrice * entry.quantity - entry.investedAmount
+        currentPrice != null
+          ? currentPrice * entry.quantity - entry.investedAmount
           : 0,
       entriesCount: 1,
       lastInvestedAt: entry.investedAt,
+      takeProfitMode: takeProfit.takeProfitMode,
+      takeProfitPrice: takeProfit.takeProfitPrice,
+      takeProfitPercent: takeProfit.takeProfitPercent,
+      takeProfitTargetPrice,
+      takeProfitTriggered:
+        currentPrice != null &&
+        takeProfitTargetPrice != null &&
+        currentPrice >= takeProfitTargetPrice,
     });
   });
 
@@ -215,6 +260,39 @@ function buildPositions(entries: DcaEntry[]): DcaPosition[] {
 
     return a.ticker.localeCompare(b.ticker);
   });
+}
+
+function getTakeProfitText(
+  config: Pick<DcaPosition, "takeProfitMode" | "takeProfitPrice" | "takeProfitPercent">,
+  currency: Currency,
+  averageCost: number
+) {
+  const targetPrice = getDcaTakeProfitTargetPrice(config, averageCost);
+
+  if (!config.takeProfitMode || targetPrice == null) {
+    return {
+      summary: TAKE_PROFIT_NOT_SET,
+      detail: TAKE_PROFIT_NOT_SET_HINT,
+      targetPrice: undefined,
+    };
+  }
+
+  if (config.takeProfitMode === "price") {
+    return {
+      summary: `${TAKE_PROFIT_MODE_PRICE} ${formatPrice(targetPrice, currency)}`,
+      detail:
+        averageCost > 0
+          ? `${formatPercent(((targetPrice - averageCost) / averageCost) * 100)}`
+          : TAKE_PROFIT_MODE_PRICE,
+      targetPrice,
+    };
+  }
+
+  return {
+    summary: `${TAKE_PROFIT_MODE_PERCENT} ${formatPercent(config.takeProfitPercent ?? 0)}`,
+    detail: formatPrice(targetPrice, currency),
+    targetPrice,
+  };
 }
 
 function matchesFilter(entry: DcaEntry, filter: AssetFilter, query: string) {
@@ -329,6 +407,10 @@ export function DcaView() {
     () => getBreakdownText(floatingPnlBreakdown),
     [floatingPnlBreakdown]
   );
+  const triggeredPositions = useMemo(
+    () => allPositions.filter((position) => position.takeProfitTriggered),
+    [allPositions]
+  );
 
   function handleNew() {
     setEditingEntry(null);
@@ -412,6 +494,38 @@ export function DcaView() {
           />
         </div>
 
+        <Card
+          className={cn(
+            "border",
+            triggeredPositions.length > 0
+              ? "border-profit/30 bg-profit/5"
+              : "border-border bg-surface-1"
+          )}
+        >
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">{TAKE_PROFIT_ALERT_TITLE}</h2>
+              <p className="mt-1 text-xs text-text-muted">
+                {triggeredPositions.length > 0
+                  ? `${triggeredPositions.length} \u4e2a\u6807\u7684\u5df2\u5230\u8fbe\u6b62\u76c8\u6761\u4ef6`
+                  : TAKE_PROFIT_ALERT_EMPTY}
+              </p>
+            </div>
+            {triggeredPositions.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {triggeredPositions.slice(0, 6).map((position) => (
+                  <span
+                    key={position.key}
+                    className="inline-flex rounded-full border border-profit/25 bg-profit/10 px-3 py-1 text-xs font-medium text-profit"
+                  >
+                    {position.ticker}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
         <Card className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative w-full lg:max-w-sm">
@@ -470,6 +584,7 @@ export function DcaView() {
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_QUANTITY}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COST}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PRICE}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_TAKE_PROFIT}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_VALUE}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PNL}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COUNT}</th>
@@ -479,13 +594,19 @@ export function DcaView() {
                   <tbody>
                     {positions.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-5 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={11} className="px-5 py-8 text-center text-sm text-text-muted">
                           {FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
                       positions.map((position) => (
-                        <tr key={position.key} className="border-t border-border/70">
+                        <tr
+                          key={position.key}
+                          className={cn(
+                            "border-t border-border/70",
+                            position.takeProfitTriggered && "bg-profit/5"
+                          )}
+                        >
                           <td className="px-5 py-4">
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
@@ -530,6 +651,42 @@ export function DcaView() {
                               ? formatPrice(position.currentPrice, position.currency)
                               : NO_PRICE_TEXT}
                           </td>
+                          <td className="px-4 py-4 text-right">
+                            {(() => {
+                              const takeProfitText = getTakeProfitText(
+                                position,
+                                position.currency,
+                                position.averageCost
+                              );
+
+                              return (
+                                <div>
+                                  <p
+                                    className={cn(
+                                      "font-medium tabular-nums",
+                                      position.takeProfitTriggered
+                                        ? "text-profit"
+                                        : "text-text-primary"
+                                    )}
+                                  >
+                                    {takeProfitText.summary}
+                                  </p>
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-xs",
+                                      position.takeProfitTriggered
+                                        ? "text-profit"
+                                        : "text-text-muted"
+                                    )}
+                                  >
+                                    {position.takeProfitTriggered
+                                      ? TAKE_PROFIT_TRIGGERED_HINT
+                                      : takeProfitText.detail}
+                                  </p>
+                                </div>
+                              );
+                            })()}
+                          </td>
                           <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
                             {formatCurrency(position.marketValue, position.currency)}
                           </td>
@@ -573,6 +730,7 @@ export function DcaView() {
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_BOUGHT}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_PRICE}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_LIVE_PRICE}</th>
+                      <th className="px-4 py-3 text-left font-medium">{RECORD_COL_TAKE_PROFIT}</th>
                       <th className="px-4 py-3 text-left font-medium">{RECORD_COL_NOTE}</th>
                       <th className="px-5 py-3 text-right font-medium">{RECORD_COL_ACTION}</th>
                     </tr>
@@ -580,16 +738,27 @@ export function DcaView() {
                   <tbody>
                     {filteredEntries.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={9} className="px-5 py-8 text-center text-sm text-text-muted">
                           {RECORD_FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
                       filteredEntries.map((entry) => {
                         const averageCost = entry.investedAmount / entry.quantity;
+                        const takeProfit = getTakeProfitText(entry, entry.currency, averageCost);
+                        const takeProfitTriggered =
+                          entry.currentPrice != null &&
+                          takeProfit.targetPrice != null &&
+                          entry.currentPrice >= takeProfit.targetPrice;
 
                         return (
-                          <tr key={entry.id} className="border-t border-border/70">
+                          <tr
+                            key={entry.id}
+                            className={cn(
+                              "border-t border-border/70",
+                              takeProfitTriggered && "bg-profit/5"
+                            )}
+                          >
                             <td className="px-5 py-4 text-text-secondary tabular-nums">
                               {formatDate(entry.investedAt)}
                             </td>
@@ -626,6 +795,28 @@ export function DcaView() {
                               {entry.currentPrice != null && entry.currentPrice > 0
                                 ? formatPrice(entry.currentPrice, entry.quoteCurrency ?? entry.currency)
                                 : NO_PRICE_TEXT}
+                            </td>
+                            <td className="max-w-[180px] px-4 py-4 text-sm">
+                              <p
+                                className={cn(
+                                  "font-medium",
+                                  takeProfitTriggered ? "text-profit" : "text-text-primary"
+                                )}
+                              >
+                                {takeProfit.summary}
+                              </p>
+                              <p
+                                className={cn(
+                                  "mt-1 text-xs",
+                                  takeProfitTriggered ? "text-profit" : "text-text-muted"
+                                )}
+                              >
+                                {takeProfitTriggered
+                                  ? TAKE_PROFIT_TRIGGERED
+                                  : takeProfit.summary === TAKE_PROFIT_NOT_SET
+                                    ? TAKE_PROFIT_NOT_SET_HINT
+                                    : takeProfit.detail}
+                              </p>
                             </td>
                             <td className="max-w-[220px] px-4 py-4 text-sm text-text-muted">
                               <p className="line-clamp-2">{entry.notes ?? "--"}</p>

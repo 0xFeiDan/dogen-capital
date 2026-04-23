@@ -5,8 +5,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { getDcaTakeProfitTargetPrice, normalizeDcaTakeProfit } from "@/lib/dca";
 import { cn, formatCurrency, formatPrice } from "@/lib/utils";
-import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
+import type { Currency, DcaAssetClass, DcaEntry, DcaTakeProfitMode } from "@/types";
+
+type DcaFormTakeProfitMode = DcaTakeProfitMode | "none";
 
 export interface DcaFormState {
   ticker: string;
@@ -16,6 +19,9 @@ export interface DcaFormState {
   investedAt: string;
   investedAmount: string;
   quantity: string;
+  takeProfitMode: DcaFormTakeProfitMode;
+  takeProfitPrice: string;
+  takeProfitPercent: string;
   notes: string;
 }
 
@@ -24,6 +30,8 @@ interface DcaFormErrors {
   investedAt?: string;
   investedAmount?: string;
   quantity?: string;
+  takeProfitPrice?: string;
+  takeProfitPercent?: string;
 }
 
 export const EMPTY_DCA_FORM: DcaFormState = {
@@ -34,6 +42,9 @@ export const EMPTY_DCA_FORM: DcaFormState = {
   investedAt: "",
   investedAmount: "",
   quantity: "",
+  takeProfitMode: "none",
+  takeProfitPrice: "",
+  takeProfitPercent: "",
   notes: "",
 };
 
@@ -45,6 +56,13 @@ const CURRENCY_LABEL = "\u8ba1\u4ef7\u8d27\u5e01 *";
 const DATE_LABEL = "\u5b9a\u6295\u65e5\u671f *";
 const AMOUNT_LABEL = "\u6295\u5165\u91d1\u989d *";
 const QUANTITY_LABEL = "\u4e70\u5165\u6570\u91cf *";
+const TAKE_PROFIT_MODE_LABEL = "\u6b62\u76c8\u65b9\u5f0f";
+const TAKE_PROFIT_PRICE_LABEL = "\u6b62\u76c8\u76ee\u6807\u4ef7";
+const TAKE_PROFIT_PERCENT_LABEL = "\u6b62\u76c8\u6536\u76ca\u7387 %";
+const TAKE_PROFIT_HINT = "\u53ea\u505a\u63d0\u9192\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5356\u51fa";
+const TAKE_PROFIT_TARGET_LABEL = "\u6b62\u76c8\u9884\u89c8";
+const TAKE_PROFIT_TARGET_PRICE = "\u76ee\u6807\u4ef7";
+const TAKE_PROFIT_TARGET_MODE = "\u89c4\u5219";
 const NOTES_LABEL = "\u5907\u6ce8";
 const NAME_PLACEHOLDER = "\u8d44\u4ea7\u540d\u79f0";
 const NOTES_PLACEHOLDER =
@@ -58,8 +76,17 @@ const TICKER_REQUIRED = "\u8bf7\u8f93\u5165\u4ee3\u7801";
 const DATE_REQUIRED = "\u8bf7\u9009\u62e9\u5b9a\u6295\u65e5\u671f";
 const AMOUNT_INVALID = "\u6295\u5165\u91d1\u989d\u5fc5\u987b\u5927\u4e8e 0";
 const QUANTITY_INVALID = "\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0";
+const TAKE_PROFIT_PRICE_INVALID = "\u6b62\u76c8\u76ee\u6807\u4ef7\u5fc5\u987b\u5927\u4e8e 0";
+const TAKE_PROFIT_PERCENT_INVALID = "\u6b62\u76c8\u6536\u76ca\u7387\u5fc5\u987b\u5927\u4e8e 0";
+const TAKE_PROFIT_MODE_NONE = "\u4e0d\u8bbe\u7f6e";
+const TAKE_PROFIT_MODE_PRICE = "\u6309\u76ee\u6807\u4ef7";
+const TAKE_PROFIT_MODE_PERCENT = "\u6309\u6536\u76ca\u7387";
+const TAKE_PROFIT_MODE_PRICE_SHORT = "\u76ee\u6807\u4ef7";
+const TAKE_PROFIT_MODE_PERCENT_SHORT = "\u6536\u76ca\u7387";
 
 export function dcaToForm(entry: DcaEntry): DcaFormState {
+  const takeProfit = normalizeDcaTakeProfit(entry);
+
   return {
     ticker: entry.ticker,
     name: entry.name ?? "",
@@ -68,6 +95,11 @@ export function dcaToForm(entry: DcaEntry): DcaFormState {
     investedAt: entry.investedAt.slice(0, 10),
     investedAmount: String(entry.investedAmount),
     quantity: String(entry.quantity),
+    takeProfitMode: takeProfit.takeProfitMode ?? "none",
+    takeProfitPrice:
+      takeProfit.takeProfitPrice != null ? String(takeProfit.takeProfitPrice) : "",
+    takeProfitPercent:
+      takeProfit.takeProfitPercent != null ? String(takeProfit.takeProfitPercent) : "",
     notes: entry.notes ?? "",
   };
 }
@@ -75,6 +107,14 @@ export function dcaToForm(entry: DcaEntry): DcaFormState {
 export function formToDcaEntry(
   form: DcaFormState
 ): Omit<DcaEntry, "id" | "createdAt" | "updatedAt"> {
+  const takeProfit = normalizeDcaTakeProfit({
+    takeProfitMode: form.takeProfitMode === "none" ? undefined : form.takeProfitMode,
+    takeProfitPrice:
+      form.takeProfitPrice.trim() !== "" ? Number(form.takeProfitPrice) : undefined,
+    takeProfitPercent:
+      form.takeProfitPercent.trim() !== "" ? Number(form.takeProfitPercent) : undefined,
+  });
+
   return {
     ticker: form.ticker.trim().toUpperCase(),
     name: form.name.trim() || undefined,
@@ -83,6 +123,9 @@ export function formToDcaEntry(
     investedAt: form.investedAt,
     investedAmount: Number(form.investedAmount),
     quantity: Number(form.quantity),
+    takeProfitMode: takeProfit.takeProfitMode,
+    takeProfitPrice: takeProfit.takeProfitPrice,
+    takeProfitPercent: takeProfit.takeProfitPercent,
     notes: form.notes.trim() || undefined,
   };
 }
@@ -106,6 +149,20 @@ function validate(form: DcaFormState): DcaFormErrors {
   const quantity = Number(form.quantity);
   if (!Number.isFinite(quantity) || quantity <= 0) {
     errors.quantity = QUANTITY_INVALID;
+  }
+
+  if (form.takeProfitMode === "price") {
+    const takeProfitPrice = Number(form.takeProfitPrice);
+    if (!Number.isFinite(takeProfitPrice) || takeProfitPrice <= 0) {
+      errors.takeProfitPrice = TAKE_PROFIT_PRICE_INVALID;
+    }
+  }
+
+  if (form.takeProfitMode === "percent") {
+    const takeProfitPercent = Number(form.takeProfitPercent);
+    if (!Number.isFinite(takeProfitPercent) || takeProfitPercent <= 0) {
+      errors.takeProfitPercent = TAKE_PROFIT_PERCENT_INVALID;
+    }
   }
 
   return errors;
@@ -160,6 +217,19 @@ export function DcaForm({
     quantity > 0
       ? investedAmount / quantity
       : null;
+  const takeProfitTargetPrice =
+    averageCost != null
+      ? getDcaTakeProfitTargetPrice(
+          {
+            takeProfitMode: form.takeProfitMode === "none" ? undefined : form.takeProfitMode,
+            takeProfitPrice:
+              form.takeProfitPrice.trim() !== "" ? Number(form.takeProfitPrice) : undefined,
+            takeProfitPercent:
+              form.takeProfitPercent.trim() !== "" ? Number(form.takeProfitPercent) : undefined,
+          },
+          averageCost
+        )
+      : undefined;
 
   return (
     <form
@@ -240,6 +310,44 @@ export function DcaForm({
           error={errors.quantity}
         />
 
+        <Select
+          label={TAKE_PROFIT_MODE_LABEL}
+          value={form.takeProfitMode}
+          onChange={(value) => set("takeProfitMode")(value as DcaFormTakeProfitMode)}
+          hint={TAKE_PROFIT_HINT}
+          options={[
+            { value: "none", label: TAKE_PROFIT_MODE_NONE },
+            { value: "price", label: TAKE_PROFIT_MODE_PRICE },
+            { value: "percent", label: TAKE_PROFIT_MODE_PERCENT },
+          ]}
+        />
+
+        {form.takeProfitMode === "price" && (
+          <Input
+            type="number"
+            label={TAKE_PROFIT_PRICE_LABEL}
+            value={form.takeProfitPrice}
+            onChange={(event) => set("takeProfitPrice")(event.target.value)}
+            placeholder="0.00"
+            min="0"
+            step="any"
+            error={errors.takeProfitPrice}
+          />
+        )}
+
+        {form.takeProfitMode === "percent" && (
+          <Input
+            type="number"
+            label={TAKE_PROFIT_PERCENT_LABEL}
+            value={form.takeProfitPercent}
+            onChange={(event) => set("takeProfitPercent")(event.target.value)}
+            placeholder="15"
+            min="0"
+            step="any"
+            error={errors.takeProfitPercent}
+          />
+        )}
+
         {averageCost != null && (
           <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
             <p className="text-2xs font-medium uppercase tracking-[0.18em] text-text-muted">
@@ -268,6 +376,30 @@ export function DcaForm({
                 </p>
               </div>
             </div>
+
+            {form.takeProfitMode !== "none" && takeProfitTargetPrice != null && (
+              <div className="mt-4 rounded-lg border border-profit/20 bg-profit/10 p-3">
+                <p className="text-2xs font-medium uppercase tracking-[0.18em] text-profit">
+                  {TAKE_PROFIT_TARGET_LABEL}
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <p className="text-2xs text-text-muted">{TAKE_PROFIT_TARGET_MODE}</p>
+                    <p className="mt-1 text-sm font-semibold text-text-primary">
+                      {form.takeProfitMode === "price"
+                        ? TAKE_PROFIT_MODE_PRICE_SHORT
+                        : TAKE_PROFIT_MODE_PERCENT_SHORT}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xs text-text-muted">{TAKE_PROFIT_TARGET_PRICE}</p>
+                    <p className="mt-1 text-sm font-semibold text-text-primary tabular-nums">
+                      {formatPrice(takeProfitTargetPrice, form.currency)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
