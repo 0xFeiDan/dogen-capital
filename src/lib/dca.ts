@@ -45,8 +45,12 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function roundPrice(value: number): number {
+  return Math.round(value * 1e12) / 1e12;
+}
+
 function roundQuantity(value: number): number {
-  return Math.round(value * 1e8) / 1e8;
+  return Math.round(value * 1e12) / 1e12;
 }
 
 export function getDcaEntrySide(entry: Pick<DcaEntry, "side">): DcaEntrySide {
@@ -146,14 +150,23 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
         totalSellQuantity += entry.quantity;
 
         const availableQuantity = Math.max(remainingQuantity, 0);
-        const averageCostBeforeSell =
-          availableQuantity > DCA_EPSILON ? remainingCostBasis / availableQuantity : 0;
+        const principalBeforeSell = Math.max(remainingCostBasis, 0);
         const quantityToReduce = Math.min(entry.quantity, availableQuantity);
+        const remainingQuantityAfterSell = Math.max(0, availableQuantity - quantityToReduce);
+        const closesPosition = remainingQuantityAfterSell <= DCA_EPSILON;
 
-        costBasisRemoved = averageCostBeforeSell * quantityToReduce;
-        remainingQuantity = Math.max(0, remainingQuantity - entry.quantity);
-        remainingCostBasis = Math.max(0, remainingCostBasis - costBasisRemoved);
-        entryRealisedPnl = entry.investedAmount - costBasisRemoved;
+        if (closesPosition) {
+          costBasisRemoved = principalBeforeSell;
+          remainingQuantity = 0;
+          remainingCostBasis = 0;
+          entryRealisedPnl = entry.investedAmount - principalBeforeSell;
+        } else {
+          costBasisRemoved = Math.min(entry.investedAmount, principalBeforeSell);
+          remainingQuantity = remainingQuantityAfterSell;
+          remainingCostBasis = Math.max(0, principalBeforeSell - costBasisRemoved);
+          entryRealisedPnl = Math.max(0, entry.investedAmount - principalBeforeSell);
+        }
+
         realisedPnl += entryRealisedPnl;
       }
 
@@ -170,7 +183,7 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
       computedEntries.push({
         ...entry,
         side,
-        averagePrice,
+        averagePrice: roundPrice(averagePrice),
         realisedPnl: entryRealisedPnl != null ? roundMoney(entryRealisedPnl) : undefined,
         costBasisRemoved: costBasisRemoved != null ? roundMoney(costBasisRemoved) : undefined,
         remainingQuantityAfter: roundQuantity(Math.max(remainingQuantity, 0)),
@@ -205,7 +218,7 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
       totalSellQuantity: roundQuantity(totalSellQuantity),
       remainingQuantity: normalizedQuantity,
       remainingCostBasis: normalizedCostBasis,
-      averageCost: roundMoney(averageCost),
+      averageCost: roundPrice(averageCost),
       marketValue: roundMoney(marketValue),
       unrealizedPnl: roundMoney(unrealizedPnl),
       realisedPnl: roundMoney(realisedPnl),

@@ -29,9 +29,9 @@ function makeDcaId(): string {
 const DRAWER_LABEL = "\u5b9a\u6295\u8868\u5355";
 const CLOSE_LABEL = "\u5173\u95ed";
 const CREATE_BUY_TITLE = "\u65b0\u589e\u4e70\u5165\u8bb0\u5f55";
-const CREATE_SELL_TITLE = "\u65b0\u589e\u6b62\u76c8\u5356\u51fa\u8bb0\u5f55";
+const CREATE_SELL_TITLE = "\u65b0\u589e\u5356\u51fa\u8bb0\u5f55";
 const EDIT_BUY_TITLE = "\u7f16\u8f91\u4e70\u5165\u8bb0\u5f55";
-const EDIT_SELL_TITLE = "\u7f16\u8f91\u6b62\u76c8\u5356\u51fa\u8bb0\u5f55";
+const EDIT_SELL_TITLE = "\u7f16\u8f91\u5356\u51fa\u8bb0\u5f55";
 const SAVE_ERROR = "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
 const SUBMITTING_LABEL = "\u63d0\u4ea4\u4e2d...";
 const SAVE_CHANGES_LABEL = "\u4fdd\u5b58\u4fee\u6539";

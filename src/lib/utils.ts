@@ -30,15 +30,15 @@ function getPriceFractionDigits(value: number): number {
   const abs = Math.abs(value);
 
   if (!Number.isFinite(abs) || abs === 0) {
-    return 2;
+    return 4;
   }
 
   if (abs >= 1) {
-    return 2;
+    return abs >= 1000 ? 2 : 4;
   }
 
   const leadingZeros = Math.max(0, Math.ceil(-Math.log10(abs)) - 1);
-  return Math.min(8, Math.max(2, leadingZeros + 4));
+  return Math.min(12, Math.max(4, leadingZeros + 4));
 }
 
 export function formatPrice(value: number, currency = "USD"): string {

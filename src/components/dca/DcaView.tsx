@@ -17,9 +17,9 @@ import { dcaToForm, type DcaFormState } from "./DcaForm";
 type AssetFilter = "all" | DcaAssetClass;
 
 const PAGE_BLURB =
-  "\u5b9a\u6295\u9875\u73b0\u5728\u540c\u65f6\u8bb0\u5f55\u4e70\u5165\u548c\u6b62\u76c8\u5356\u51fa\u6d41\u6c34\uff0c\u7cfb\u7edf\u4f1a\u81ea\u52a8\u7edf\u8ba1\u5269\u4f59\u6301\u4ed3\u3001\u5269\u4f59\u6210\u672c\u3001\u5df2\u5b9e\u73b0\u76c8\u4e8f\u4e0e\u5b9e\u65f6\u5e02\u503c\u3002";
+  "\u5b9a\u6295\u9875\u73b0\u5728\u540c\u65f6\u8bb0\u5f55\u4e70\u5165\u548c\u5356\u51fa\u6d41\u6c34\uff0c\u5356\u51fa\u91d1\u989d\u4f1a\u4f18\u5148\u51b2\u51cf\u672c\u91d1\uff0c\u8d85\u51fa\u5269\u4f59\u672c\u91d1\u7684\u90e8\u5206\u624d\u8ba1\u5165\u5df2\u5b9e\u73b0\u76c8\u4e8f\u3002";
 const ADD_ENTRY_TEXT = "\u65b0\u589e\u4e70\u5165";
-const ADD_SELL_TEXT = "\u8bb0\u5f55\u6b62\u76c8\u5356\u51fa";
+const ADD_SELL_TEXT = "\u8bb0\u5f55\u5356\u51fa";
 const SEARCH_PLACEHOLDER = "\u641c\u7d22\u4ee3\u7801\u3001\u540d\u79f0\u3001\u5907\u6ce8";
 const FILTER_ALL = "\u5168\u90e8";
 const FILTER_STOCK = "\u80a1\u7968";
@@ -31,26 +31,26 @@ const DELETE_LABEL = "\u5220\u9664";
 const DELETE_ERROR = "\u5220\u9664\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
 const EMPTY_TITLE = "\u8fd8\u6ca1\u6709\u5b9a\u6295\u8bb0\u5f55";
 const EMPTY_TEXT =
-  "\u4f60\u53ef\u4ee5\u5148\u6dfb\u52a0\u4e00\u7b14\u4e70\u5165\uff0c\u540e\u9762\u518d\u7528\u201c\u6b62\u76c8\u5356\u51fa\u201d\u628a\u771f\u5b9e\u7684\u5356\u51fa\u8bb0\u5f55\u8865\u8fdb\u6765\u3002";
+  "\u4f60\u53ef\u4ee5\u5148\u6dfb\u52a0\u4e00\u7b14\u4e70\u5165\uff0c\u540e\u9762\u518d\u7528\u201c\u5356\u51fa\u8bb0\u5f55\u201d\u628a\u771f\u5b9e\u7684\u5356\u51fa\u8bb0\u5f55\u8865\u8fdb\u6765\u3002";
 const METRIC_POSITIONS = "\u5269\u4f59\u6301\u4ed3";
 const METRIC_RECORDS = "\u603b\u8bb0\u5f55";
 const METRIC_STOCKS = "\u80a1\u7968\u6301\u4ed3";
 const METRIC_CRYPTOS = "\u5e01\u79cd\u6301\u4ed3";
-const METRIC_COST_BASIS = "\u5269\u4f59\u6210\u672c";
+const METRIC_COST_BASIS = "\u5269\u4f59\u672c\u91d1";
 const METRIC_REALISED = "\u5df2\u5b9e\u73b0";
 const METRIC_MARKET_VALUE = "\u5f53\u524d\u5e02\u503c";
 const METRIC_FLOATING_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
 const MULTI_CURRENCY_LABEL = "\u591a\u5e01\u79cd";
 const POSITIONS_SUB =
-  "\u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u5c55\u793a\u5269\u4f59\u6210\u672c\u3001\u5269\u4f59\u4ed3\u4f4d\u3001\u5df2\u5b9e\u73b0\u76c8\u4e8f\u548c\u672a\u5b9e\u73b0\u76c8\u4e8f\u3002";
+  "\u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u5c55\u793a\u5269\u4f59\u672c\u91d1\u3001\u5269\u4f59\u4ed3\u4f4d\u3001\u5df2\u5b9e\u73b0\u76c8\u4e8f\u548c\u672a\u5b9e\u73b0\u76c8\u4e8f\u3002";
 const RECORDS_SUB =
-  "\u6bcf\u4e00\u7b14\u4e70\u5165\u548c\u6b62\u76c8\u5356\u51fa\u90fd\u4fdd\u7559\u4e3a\u72ec\u7acb\u8bb0\u5f55\uff0c\u65b9\u4fbf\u4f60\u56de\u770b\u8282\u594f\u548c\u9501\u5229\u7ed3\u679c\u3002";
+  "\u6bcf\u4e00\u7b14\u4e70\u5165\u548c\u5356\u51fa\u90fd\u4fdd\u7559\u4e3a\u72ec\u7acb\u8bb0\u5f55\uff0c\u65b9\u4fbf\u4f60\u56de\u770b\u8282\u594f\u548c\u5356\u51fa\u7ed3\u679c\u3002";
 const FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5269\u4f59\u6301\u4ed3\u3002";
 const RECORD_FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u6d41\u6c34\u8bb0\u5f55\u3002";
 const NO_PRICE_TEXT = "\u7b49\u5f85\u884c\u60c5";
 const POSITION_COL_TICKER = "\u6807\u7684";
 const POSITION_COL_CLASS = "\u677f\u5757";
-const POSITION_COL_COST = "\u5269\u4f59\u6210\u672c";
+const POSITION_COL_COST = "\u5269\u4f59\u672c\u91d1";
 const POSITION_COL_QUANTITY = "\u5269\u4f59\u6570\u91cf";
 const POSITION_COL_AVG_COST = "\u6301\u4ed3\u5747\u4ef7";
 const POSITION_COL_PRICE = "\u5f53\u524d\u4ef7";
@@ -73,7 +73,7 @@ const ACTION_EDIT = "\u7f16\u8f91";
 const ACTION_REPEAT = "\u518d\u6295";
 const ACTION_DELETE = "\u5220\u9664";
 const SIDE_BUY = "\u4e70\u5165";
-const SIDE_SELL = "\u6b62\u76c8\u5356\u51fa";
+const SIDE_SELL = "\u5356\u51fa";
 
 function todayInputDate() {
   const now = new Date();
@@ -84,7 +84,7 @@ function todayInputDate() {
 function formatQuantity(value: number): string {
   return value.toLocaleString("en-US", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 8,
+    maximumFractionDigits: 12,
   });
 }
 
@@ -454,17 +454,17 @@ export function DcaView() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-surface-2/70 text-xs uppercase tracking-wide text-text-muted">
                     <tr>
-                      <th className="px-5 py-3 text-left font-medium">{POSITION_COL_TICKER}</th>
-                      <th className="px-4 py-3 text-left font-medium">{POSITION_COL_CLASS}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COST}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_QUANTITY}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_AVG_COST}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PRICE}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_VALUE}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_FLOATING}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_REALISED}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COUNT}</th>
-                      <th className="px-5 py-3 text-right font-medium">{POSITION_COL_LAST}</th>
+                      <th className="px-5 py-3 text-center font-medium">{POSITION_COL_TICKER}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_CLASS}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_COST}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_QUANTITY}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_AVG_COST}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_PRICE}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_VALUE}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_FLOATING}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_REALISED}</th>
+                      <th className="px-4 py-3 text-center font-medium">{POSITION_COL_COUNT}</th>
+                      <th className="px-5 py-3 text-center font-medium">{POSITION_COL_LAST}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -477,9 +477,9 @@ export function DcaView() {
                     ) : (
                       filteredActivePositions.map((position) => (
                         <tr key={position.key} className="border-t border-border/70">
-                          <td className="px-5 py-4">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
+                          <td className="px-5 py-4 text-center">
+                            <div className="flex flex-col items-center">
+                              <div className="flex flex-wrap items-center justify-center gap-2">
                                 <p className="font-medium text-text-primary">{position.ticker}</p>
                                 <Button
                                   variant="secondary"
@@ -502,7 +502,7 @@ export function DcaView() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 text-center">
                             <span
                               className={cn(
                                 "inline-flex rounded-full border px-2 py-1 text-xs font-medium",
@@ -514,26 +514,26 @@ export function DcaView() {
                               {getAssetClassLabel(position.assetClass)}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
+                          <td className="px-4 py-4 text-center font-medium text-text-primary tabular-nums">
                             {formatCurrency(position.remainingCostBasis, position.currency)}
                           </td>
-                          <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                          <td className="px-4 py-4 text-center text-text-secondary tabular-nums">
                             {formatQuantity(position.remainingQuantity)}
                           </td>
-                          <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                          <td className="px-4 py-4 text-center text-text-secondary tabular-nums">
                             {formatPrice(position.averageCost, position.currency)}
                           </td>
-                          <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                          <td className="px-4 py-4 text-center text-text-secondary tabular-nums">
                             {position.currentPrice != null
                               ? formatPrice(position.currentPrice, position.quoteCurrency ?? position.currency)
                               : NO_PRICE_TEXT}
                           </td>
-                          <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
+                          <td className="px-4 py-4 text-center font-medium text-text-primary tabular-nums">
                             {formatCurrency(position.marketValue, position.currency)}
                           </td>
                           <td
                             className={cn(
-                              "px-4 py-4 text-right font-medium tabular-nums",
+                              "px-4 py-4 text-center font-medium tabular-nums",
                               position.unrealizedPnl > 0 && "text-profit",
                               position.unrealizedPnl < 0 && "text-loss",
                               position.unrealizedPnl === 0 && "text-text-secondary"
@@ -544,7 +544,7 @@ export function DcaView() {
                           </td>
                           <td
                             className={cn(
-                              "px-4 py-4 text-right font-medium tabular-nums",
+                              "px-4 py-4 text-center font-medium tabular-nums",
                               position.realisedPnl > 0 && "text-profit",
                               position.realisedPnl < 0 && "text-loss",
                               position.realisedPnl === 0 && "text-text-secondary"
@@ -553,10 +553,10 @@ export function DcaView() {
                             {position.realisedPnl > 0 ? "+" : ""}
                             {formatCurrency(position.realisedPnl, position.currency)}
                           </td>
-                          <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+                          <td className="px-4 py-4 text-center text-text-secondary tabular-nums">
                             {position.entriesCount}
                           </td>
-                          <td className="px-5 py-4 text-right text-text-secondary tabular-nums">
+                          <td className="px-5 py-4 text-center text-text-secondary tabular-nums">
                             {formatDate(position.latestActivityAt)}
                           </td>
                         </tr>

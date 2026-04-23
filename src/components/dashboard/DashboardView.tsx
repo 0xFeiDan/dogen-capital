@@ -56,7 +56,7 @@ const ASSET_ALLOCATION_LABEL = "\u8d44\u4ea7\u5206\u5e03";
 const ASSET_ALLOCATION_SUB = "\u5f53\u524d\u6301\u4ed3 + \u73b0\u91d1 / \u672c\u4f4d";
 const MONTHLY_PNL_LABEL = "\u6708\u5ea6\u76c8\u4e8f";
 const MONTHLY_PNL_SUB =
-  "\u7edf\u8ba1\u4ea4\u6613\u5e73\u4ed3 + \u5b9a\u6295\u6b62\u76c8\u5356\u51fa\u7684\u5df2\u5b9e\u73b0\u76c8\u4e8f";
+  "\u7edf\u8ba1\u4ea4\u6613\u5e73\u4ed3 + \u5b9a\u6295\u5356\u51fa\u7684\u5df2\u5b9e\u73b0\u76c8\u4e8f";
 
 function ChartLoader() {
   return (

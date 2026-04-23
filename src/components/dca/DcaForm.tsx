@@ -50,7 +50,7 @@ const NAME_PLACEHOLDER = "\u8d44\u4ea7\u540d\u79f0";
 const NOTES_PLACEHOLDER_BUY =
   "\u4f8b\u5982\uff1a\u6bcf\u6708\u5de5\u8d44\u65e5\u5b9a\u6295\u3001\u66b4\u8dcc\u8865\u4ed3\u3001\u5b63\u5ea6\u52a0\u4ed3\u8ba1\u5212";
 const NOTES_PLACEHOLDER_SELL =
-  "\u4f8b\u5982\uff1a\u5206\u6279\u6b62\u76c8\u3001\u51cf\u4ed3\u9501\u5229\u3001\u89e6\u53d1\u81ea\u5df1\u8bbe\u5b9a\u7684\u5356\u51fa\u6761\u4ef6";
+  "\u4f8b\u5982\uff1a\u5206\u6279\u5356\u51fa\u3001\u51cf\u4ed3\u9501\u5229\u3001\u89e6\u53d1\u81ea\u5df1\u8bbe\u5b9a\u7684\u5356\u51fa\u6761\u4ef6";
 const PREVIEW_LABEL = "\u672c\u6b21\u8bb0\u5f55\u9884\u89c8";
 const PREVIEW_AMOUNT = "\u91d1\u989d";
 const PREVIEW_QUANTITY = "\u6570\u91cf";
@@ -62,7 +62,7 @@ const AMOUNT_INVALID = "\u91d1\u989d\u5fc5\u987b\u5927\u4e8e 0";
 const QUANTITY_INVALID = "\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0";
 
 const BUY_SIDE_LABEL = "\u4e70\u5165";
-const SELL_SIDE_LABEL = "\u6b62\u76c8\u5356\u51fa";
+const SELL_SIDE_LABEL = "\u5356\u51fa";
 const BUY_DATE_LABEL = "\u5b9a\u6295\u65e5\u671f *";
 const SELL_DATE_LABEL = "\u5356\u51fa\u65e5\u671f *";
 const BUY_AMOUNT_LABEL = "\u6295\u5165\u91d1\u989d *";
