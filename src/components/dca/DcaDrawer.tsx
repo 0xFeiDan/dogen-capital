@@ -28,12 +28,15 @@ function makeDcaId(): string {
 
 const DRAWER_LABEL = "\u5b9a\u6295\u8868\u5355";
 const CLOSE_LABEL = "\u5173\u95ed";
-const CREATE_TITLE = "\u65b0\u589e\u5b9a\u6295\u8bb0\u5f55";
-const EDIT_TITLE = "\u7f16\u8f91\u5b9a\u6295\u8bb0\u5f55";
+const CREATE_BUY_TITLE = "\u65b0\u589e\u4e70\u5165\u8bb0\u5f55";
+const CREATE_SELL_TITLE = "\u65b0\u589e\u6b62\u76c8\u5356\u51fa\u8bb0\u5f55";
+const EDIT_BUY_TITLE = "\u7f16\u8f91\u4e70\u5165\u8bb0\u5f55";
+const EDIT_SELL_TITLE = "\u7f16\u8f91\u6b62\u76c8\u5356\u51fa\u8bb0\u5f55";
 const SAVE_ERROR = "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
 const SUBMITTING_LABEL = "\u63d0\u4ea4\u4e2d...";
 const SAVE_CHANGES_LABEL = "\u4fdd\u5b58\u4fee\u6539";
-const ADD_ENTRY_LABEL = "\u4fdd\u5b58\u5b9a\u6295";
+const ADD_BUY_LABEL = "\u4fdd\u5b58\u4e70\u5165";
+const ADD_SELL_LABEL = "\u4fdd\u5b58\u5356\u51fa";
 
 export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftValues }: DcaDrawerProps) {
   const activeUserId = useAppUsers((state) => state.activeUserId);
@@ -113,7 +116,29 @@ export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftVal
   }
 
   const initialValues = editingEntry ? dcaToForm(editingEntry) : draftValues ?? EMPTY_DCA_FORM;
+  const [liveValues, setLiveValues] = useState<DcaFormState>(initialValues);
+
+  useEffect(() => {
+    if (!open) return;
+    setLiveValues(initialValues);
+  }, [initialValues, open]);
+
   const isEditing = Boolean(editingEntry);
+  const currentSide = liveValues.side;
+  const title = isEditing
+    ? currentSide === "sell"
+      ? EDIT_SELL_TITLE
+      : EDIT_BUY_TITLE
+    : currentSide === "sell"
+      ? CREATE_SELL_TITLE
+      : CREATE_BUY_TITLE;
+  const submitText = submitting
+    ? SUBMITTING_LABEL
+    : isEditing
+      ? SAVE_CHANGES_LABEL
+      : currentSide === "sell"
+        ? ADD_SELL_LABEL
+        : ADD_BUY_LABEL;
 
   return (
     <>
@@ -143,7 +168,7 @@ export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftVal
               <ArrowLeft className="h-4 w-4" />
             </button>
             <h2 className="text-sm font-semibold text-text-primary">
-              {isEditing ? EDIT_TITLE : CREATE_TITLE}
+              {title}
             </h2>
           </div>
 
@@ -168,17 +193,12 @@ export function DcaDrawer({ open, onClose, editingEntry, initialValues: draftVal
               key={editingEntry?.id ?? `${initialValues.ticker}:${initialValues.investedAt}:new`}
               initialValues={initialValues}
               className="min-h-0 flex-1"
+              onStateChange={setLiveValues}
               onSubmit={(values) => {
                 void handleSubmit(values);
               }}
               onCancel={onClose}
-              submitLabel={
-                submitting
-                  ? SUBMITTING_LABEL
-                  : isEditing
-                    ? SAVE_CHANGES_LABEL
-                    : ADD_ENTRY_LABEL
-              }
+              submitLabel={submitText}
             />
           </div>
         )}

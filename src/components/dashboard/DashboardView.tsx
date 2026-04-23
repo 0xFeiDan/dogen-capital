@@ -56,7 +56,7 @@ const ASSET_ALLOCATION_LABEL = "\u8d44\u4ea7\u5206\u5e03";
 const ASSET_ALLOCATION_SUB = "\u5f53\u524d\u6301\u4ed3 + \u73b0\u91d1 / \u672c\u4f4d";
 const MONTHLY_PNL_LABEL = "\u6708\u5ea6\u76c8\u4e8f";
 const MONTHLY_PNL_SUB =
-  "\u4ec5\u7edf\u8ba1\u5df2\u5e73\u4ed3\u51c0\u76c8\u4e8f\uff0c\u6309\u51fa\u573a\u6708\u4efd";
+  "\u7edf\u8ba1\u4ea4\u6613\u5e73\u4ed3 + \u5b9a\u6295\u6b62\u76c8\u5356\u51fa\u7684\u5df2\u5b9e\u73b0\u76c8\u4e8f";
 
 function ChartLoader() {
   return (
@@ -200,7 +200,7 @@ export function DashboardView() {
           value={formatCurrency(stats.combinedNetPnl, "USD", true)}
           trend={capitalPnlPercent !== 0 ? formatPercent(capitalPnlPercent) : undefined}
           trendSign={pnlSign}
-          sub={`${REALISED_LABEL} ${formatCurrency(stats.realisedNetPnl, "USD", true)} / ${UNREALISED_LABEL} ${formatCurrency(stats.tradeUnrealisedNetPnl, "USD", true)} / ${DCA_LABEL} ${formatCurrency(stats.dcaUnrealisedNetPnl, "USD", true)}`}
+          sub={`${REALISED_LABEL} ${formatCurrency(stats.realisedNetPnl, "USD", true)} (\u4ea4\u6613 ${formatCurrency(stats.tradeRealisedNetPnl, "USD", true)} / ${DCA_LABEL} ${formatCurrency(stats.dcaRealisedNetPnl, "USD", true)}) / ${UNREALISED_LABEL} \u4ea4\u6613 ${formatCurrency(stats.tradeUnrealisedNetPnl, "USD", true)} / ${DCA_LABEL} ${formatCurrency(stats.dcaUnrealisedNetPnl, "USD", true)}`}
           icon={TrendingUp}
           iconColor={pnlSign === "positive" ? "text-profit" : "text-loss"}
           accent

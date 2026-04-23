@@ -5,23 +5,18 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { getDcaTakeProfitTargetPrice, normalizeDcaTakeProfit } from "@/lib/dca";
 import { cn, formatCurrency, formatPrice } from "@/lib/utils";
-import type { Currency, DcaAssetClass, DcaEntry, DcaTakeProfitMode } from "@/types";
-
-type DcaFormTakeProfitMode = DcaTakeProfitMode | "none";
+import type { Currency, DcaAssetClass, DcaEntry, DcaEntrySide } from "@/types";
 
 export interface DcaFormState {
   ticker: string;
   name: string;
+  side: DcaEntrySide;
   assetClass: DcaAssetClass;
   currency: Currency;
   investedAt: string;
   investedAmount: string;
   quantity: string;
-  takeProfitMode: DcaFormTakeProfitMode;
-  takeProfitPrice: string;
-  takeProfitPercent: string;
   notes: string;
 }
 
@@ -30,76 +25,77 @@ interface DcaFormErrors {
   investedAt?: string;
   investedAmount?: string;
   quantity?: string;
-  takeProfitPrice?: string;
-  takeProfitPercent?: string;
 }
 
 export const EMPTY_DCA_FORM: DcaFormState = {
   ticker: "",
   name: "",
+  side: "buy",
   assetClass: "stock",
   currency: "USD",
   investedAt: "",
   investedAmount: "",
   quantity: "",
-  takeProfitMode: "none",
-  takeProfitPrice: "",
-  takeProfitPercent: "",
   notes: "",
 };
 
 const SUBMIT_LABEL = "\u4fdd\u5b58\u8bb0\u5f55";
+const SIDE_LABEL = "\u7c7b\u578b *";
 const TICKER_LABEL = "\u4ee3\u7801 *";
 const NAME_LABEL = "\u540d\u79f0";
 const ASSET_CLASS_LABEL = "\u677f\u5757 *";
 const CURRENCY_LABEL = "\u8ba1\u4ef7\u8d27\u5e01 *";
-const DATE_LABEL = "\u5b9a\u6295\u65e5\u671f *";
-const AMOUNT_LABEL = "\u6295\u5165\u91d1\u989d *";
-const QUANTITY_LABEL = "\u4e70\u5165\u6570\u91cf *";
-const TAKE_PROFIT_MODE_LABEL = "\u6b62\u76c8\u65b9\u5f0f";
-const TAKE_PROFIT_PRICE_LABEL = "\u6b62\u76c8\u76ee\u6807\u4ef7";
-const TAKE_PROFIT_PERCENT_LABEL = "\u6b62\u76c8\u6536\u76ca\u7387 %";
-const TAKE_PROFIT_HINT = "\u53ea\u505a\u63d0\u9192\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5356\u51fa";
-const TAKE_PROFIT_TARGET_LABEL = "\u6b62\u76c8\u9884\u89c8";
-const TAKE_PROFIT_TARGET_PRICE = "\u76ee\u6807\u4ef7";
-const TAKE_PROFIT_TARGET_MODE = "\u89c4\u5219";
 const NOTES_LABEL = "\u5907\u6ce8";
 const NAME_PLACEHOLDER = "\u8d44\u4ea7\u540d\u79f0";
-const NOTES_PLACEHOLDER =
+const NOTES_PLACEHOLDER_BUY =
   "\u4f8b\u5982\uff1a\u6bcf\u6708\u5de5\u8d44\u65e5\u5b9a\u6295\u3001\u66b4\u8dcc\u8865\u4ed3\u3001\u5b63\u5ea6\u52a0\u4ed3\u8ba1\u5212";
-const PREVIEW_LABEL = "\u672c\u6b21\u5b9a\u6295\u9884\u89c8";
-const PREVIEW_AMOUNT = "\u6295\u5165\u91d1\u989d";
-const PREVIEW_QUANTITY = "\u4e70\u5165\u6570\u91cf";
-const PREVIEW_PRICE = "\u672c\u6b21\u5747\u4ef7";
+const NOTES_PLACEHOLDER_SELL =
+  "\u4f8b\u5982\uff1a\u5206\u6279\u6b62\u76c8\u3001\u51cf\u4ed3\u9501\u5229\u3001\u89e6\u53d1\u81ea\u5df1\u8bbe\u5b9a\u7684\u5356\u51fa\u6761\u4ef6";
+const PREVIEW_LABEL = "\u672c\u6b21\u8bb0\u5f55\u9884\u89c8";
+const PREVIEW_AMOUNT = "\u91d1\u989d";
+const PREVIEW_QUANTITY = "\u6570\u91cf";
+const PREVIEW_PRICE = "\u6210\u4ea4\u5747\u4ef7";
 const CANCEL_LABEL = "\u53d6\u6d88";
 const TICKER_REQUIRED = "\u8bf7\u8f93\u5165\u4ee3\u7801";
-const DATE_REQUIRED = "\u8bf7\u9009\u62e9\u5b9a\u6295\u65e5\u671f";
-const AMOUNT_INVALID = "\u6295\u5165\u91d1\u989d\u5fc5\u987b\u5927\u4e8e 0";
+const DATE_REQUIRED = "\u8bf7\u9009\u62e9\u65e5\u671f";
+const AMOUNT_INVALID = "\u91d1\u989d\u5fc5\u987b\u5927\u4e8e 0";
 const QUANTITY_INVALID = "\u6570\u91cf\u5fc5\u987b\u5927\u4e8e 0";
-const TAKE_PROFIT_PRICE_INVALID = "\u6b62\u76c8\u76ee\u6807\u4ef7\u5fc5\u987b\u5927\u4e8e 0";
-const TAKE_PROFIT_PERCENT_INVALID = "\u6b62\u76c8\u6536\u76ca\u7387\u5fc5\u987b\u5927\u4e8e 0";
-const TAKE_PROFIT_MODE_NONE = "\u4e0d\u8bbe\u7f6e";
-const TAKE_PROFIT_MODE_PRICE = "\u6309\u76ee\u6807\u4ef7";
-const TAKE_PROFIT_MODE_PERCENT = "\u6309\u6536\u76ca\u7387";
-const TAKE_PROFIT_MODE_PRICE_SHORT = "\u76ee\u6807\u4ef7";
-const TAKE_PROFIT_MODE_PERCENT_SHORT = "\u6536\u76ca\u7387";
+
+const BUY_SIDE_LABEL = "\u4e70\u5165";
+const SELL_SIDE_LABEL = "\u6b62\u76c8\u5356\u51fa";
+const BUY_DATE_LABEL = "\u5b9a\u6295\u65e5\u671f *";
+const SELL_DATE_LABEL = "\u5356\u51fa\u65e5\u671f *";
+const BUY_AMOUNT_LABEL = "\u6295\u5165\u91d1\u989d *";
+const SELL_AMOUNT_LABEL = "\u5356\u51fa\u91d1\u989d *";
+const BUY_QUANTITY_LABEL = "\u4e70\u5165\u6570\u91cf *";
+const SELL_QUANTITY_LABEL = "\u5356\u51fa\u6570\u91cf *";
+
+function getFormCopy(side: DcaEntrySide) {
+  return side === "sell"
+    ? {
+        dateLabel: SELL_DATE_LABEL,
+        amountLabel: SELL_AMOUNT_LABEL,
+        quantityLabel: SELL_QUANTITY_LABEL,
+        notesPlaceholder: NOTES_PLACEHOLDER_SELL,
+      }
+    : {
+        dateLabel: BUY_DATE_LABEL,
+        amountLabel: BUY_AMOUNT_LABEL,
+        quantityLabel: BUY_QUANTITY_LABEL,
+        notesPlaceholder: NOTES_PLACEHOLDER_BUY,
+      };
+}
 
 export function dcaToForm(entry: DcaEntry): DcaFormState {
-  const takeProfit = normalizeDcaTakeProfit(entry);
-
   return {
     ticker: entry.ticker,
     name: entry.name ?? "",
+    side: entry.side === "sell" ? "sell" : "buy",
     assetClass: entry.assetClass,
     currency: entry.currency,
     investedAt: entry.investedAt.slice(0, 10),
     investedAmount: String(entry.investedAmount),
     quantity: String(entry.quantity),
-    takeProfitMode: takeProfit.takeProfitMode ?? "none",
-    takeProfitPrice:
-      takeProfit.takeProfitPrice != null ? String(takeProfit.takeProfitPrice) : "",
-    takeProfitPercent:
-      takeProfit.takeProfitPercent != null ? String(takeProfit.takeProfitPercent) : "",
     notes: entry.notes ?? "",
   };
 }
@@ -107,25 +103,15 @@ export function dcaToForm(entry: DcaEntry): DcaFormState {
 export function formToDcaEntry(
   form: DcaFormState
 ): Omit<DcaEntry, "id" | "createdAt" | "updatedAt"> {
-  const takeProfit = normalizeDcaTakeProfit({
-    takeProfitMode: form.takeProfitMode === "none" ? undefined : form.takeProfitMode,
-    takeProfitPrice:
-      form.takeProfitPrice.trim() !== "" ? Number(form.takeProfitPrice) : undefined,
-    takeProfitPercent:
-      form.takeProfitPercent.trim() !== "" ? Number(form.takeProfitPercent) : undefined,
-  });
-
   return {
     ticker: form.ticker.trim().toUpperCase(),
     name: form.name.trim() || undefined,
+    side: form.side,
     assetClass: form.assetClass,
     currency: form.currency,
     investedAt: form.investedAt,
     investedAmount: Number(form.investedAmount),
     quantity: Number(form.quantity),
-    takeProfitMode: takeProfit.takeProfitMode,
-    takeProfitPrice: takeProfit.takeProfitPrice,
-    takeProfitPercent: takeProfit.takeProfitPercent,
     notes: form.notes.trim() || undefined,
   };
 }
@@ -151,20 +137,6 @@ function validate(form: DcaFormState): DcaFormErrors {
     errors.quantity = QUANTITY_INVALID;
   }
 
-  if (form.takeProfitMode === "price") {
-    const takeProfitPrice = Number(form.takeProfitPrice);
-    if (!Number.isFinite(takeProfitPrice) || takeProfitPrice <= 0) {
-      errors.takeProfitPrice = TAKE_PROFIT_PRICE_INVALID;
-    }
-  }
-
-  if (form.takeProfitMode === "percent") {
-    const takeProfitPercent = Number(form.takeProfitPercent);
-    if (!Number.isFinite(takeProfitPercent) || takeProfitPercent <= 0) {
-      errors.takeProfitPercent = TAKE_PROFIT_PERCENT_INVALID;
-    }
-  }
-
   return errors;
 }
 
@@ -172,6 +144,7 @@ interface DcaFormProps {
   initialValues?: DcaFormState;
   onSubmit: (data: DcaFormState) => void;
   onCancel: () => void;
+  onStateChange?: (data: DcaFormState) => void;
   submitLabel?: string;
   className?: string;
 }
@@ -180,6 +153,7 @@ export function DcaForm({
   initialValues = EMPTY_DCA_FORM,
   onSubmit,
   onCancel,
+  onStateChange,
   submitLabel = SUBMIT_LABEL,
   className,
 }: DcaFormProps) {
@@ -192,7 +166,10 @@ export function DcaForm({
     (value: DcaFormState[K]) => {
       setForm((prev) => {
         const next = { ...prev, [key]: value };
-        if (submitted) setErrors(validate(next));
+        onStateChange?.(next);
+        if (submitted) {
+          setErrors(validate(next));
+        }
         return next;
       });
     };
@@ -208,28 +185,16 @@ export function DcaForm({
     }
   }
 
-  const investedAmount = Number(form.investedAmount);
+  const amount = Number(form.investedAmount);
   const quantity = Number(form.quantity);
-  const averageCost =
-    Number.isFinite(investedAmount) &&
-    investedAmount > 0 &&
+  const averagePrice =
+    Number.isFinite(amount) &&
+    amount > 0 &&
     Number.isFinite(quantity) &&
     quantity > 0
-      ? investedAmount / quantity
+      ? amount / quantity
       : null;
-  const takeProfitTargetPrice =
-    averageCost != null
-      ? getDcaTakeProfitTargetPrice(
-          {
-            takeProfitMode: form.takeProfitMode === "none" ? undefined : form.takeProfitMode,
-            takeProfitPrice:
-              form.takeProfitPrice.trim() !== "" ? Number(form.takeProfitPrice) : undefined,
-            takeProfitPercent:
-              form.takeProfitPercent.trim() !== "" ? Number(form.takeProfitPercent) : undefined,
-          },
-          averageCost
-        )
-      : undefined;
+  const copy = getFormCopy(form.side);
 
   return (
     <form
@@ -237,6 +202,27 @@ export function DcaForm({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
     >
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 pb-8 overscroll-contain">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select
+            label={SIDE_LABEL}
+            value={form.side}
+            onChange={(value) => set("side")(value as DcaEntrySide)}
+            options={[
+              { value: "buy", label: BUY_SIDE_LABEL },
+              { value: "sell", label: SELL_SIDE_LABEL },
+            ]}
+          />
+          <Select
+            label={ASSET_CLASS_LABEL}
+            value={form.assetClass}
+            onChange={(value) => set("assetClass")(value as DcaAssetClass)}
+            options={[
+              { value: "stock", label: FILTER_STOCK },
+              { value: "crypto", label: FILTER_CRYPTO },
+            ]}
+          />
+        </div>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label={TICKER_LABEL}
@@ -256,15 +242,6 @@ export function DcaForm({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select
-            label={ASSET_CLASS_LABEL}
-            value={form.assetClass}
-            onChange={(value) => set("assetClass")(value as DcaAssetClass)}
-            options={[
-              { value: "stock", label: FILTER_STOCK },
-              { value: "crypto", label: FILTER_CRYPTO },
-            ]}
-          />
-          <Select
             label={CURRENCY_LABEL}
             value={form.currency}
             onChange={(value) => set("currency")(value as Currency)}
@@ -277,19 +254,19 @@ export function DcaForm({
               { value: "JPY", label: "JPY" },
             ]}
           />
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="date"
-            label={DATE_LABEL}
+            label={copy.dateLabel}
             value={form.investedAt}
             onChange={(event) => set("investedAt")(event.target.value)}
             error={errors.investedAt}
           />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             type="number"
-            label={AMOUNT_LABEL}
+            label={copy.amountLabel}
             value={form.investedAmount}
             onChange={(event) => set("investedAmount")(event.target.value)}
             placeholder="0.00"
@@ -297,58 +274,19 @@ export function DcaForm({
             step="any"
             error={errors.investedAmount}
           />
+          <Input
+            type="number"
+            label={copy.quantityLabel}
+            value={form.quantity}
+            onChange={(event) => set("quantity")(event.target.value)}
+            placeholder="0"
+            min="0"
+            step="any"
+            error={errors.quantity}
+          />
         </div>
 
-        <Input
-          type="number"
-          label={QUANTITY_LABEL}
-          value={form.quantity}
-          onChange={(event) => set("quantity")(event.target.value)}
-          placeholder="0"
-          min="0"
-          step="any"
-          error={errors.quantity}
-        />
-
-        <Select
-          label={TAKE_PROFIT_MODE_LABEL}
-          value={form.takeProfitMode}
-          onChange={(value) => set("takeProfitMode")(value as DcaFormTakeProfitMode)}
-          hint={TAKE_PROFIT_HINT}
-          options={[
-            { value: "none", label: TAKE_PROFIT_MODE_NONE },
-            { value: "price", label: TAKE_PROFIT_MODE_PRICE },
-            { value: "percent", label: TAKE_PROFIT_MODE_PERCENT },
-          ]}
-        />
-
-        {form.takeProfitMode === "price" && (
-          <Input
-            type="number"
-            label={TAKE_PROFIT_PRICE_LABEL}
-            value={form.takeProfitPrice}
-            onChange={(event) => set("takeProfitPrice")(event.target.value)}
-            placeholder="0.00"
-            min="0"
-            step="any"
-            error={errors.takeProfitPrice}
-          />
-        )}
-
-        {form.takeProfitMode === "percent" && (
-          <Input
-            type="number"
-            label={TAKE_PROFIT_PERCENT_LABEL}
-            value={form.takeProfitPercent}
-            onChange={(event) => set("takeProfitPercent")(event.target.value)}
-            placeholder="15"
-            min="0"
-            step="any"
-            error={errors.takeProfitPercent}
-          />
-        )}
-
-        {averageCost != null && (
+        {averagePrice != null && (
           <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
             <p className="text-2xs font-medium uppercase tracking-[0.18em] text-text-muted">
               {PREVIEW_LABEL}
@@ -357,7 +295,7 @@ export function DcaForm({
               <div>
                 <p className="text-2xs text-text-muted">{PREVIEW_AMOUNT}</p>
                 <p className="mt-1 text-sm font-semibold text-text-primary tabular-nums">
-                  {formatCurrency(investedAmount, form.currency)}
+                  {formatCurrency(amount, form.currency)}
                 </p>
               </div>
               <div>
@@ -372,34 +310,10 @@ export function DcaForm({
               <div>
                 <p className="text-2xs text-text-muted">{PREVIEW_PRICE}</p>
                 <p className="mt-1 text-sm font-semibold text-text-primary tabular-nums">
-                  {formatPrice(averageCost, form.currency)}
+                  {formatPrice(averagePrice, form.currency)}
                 </p>
               </div>
             </div>
-
-            {form.takeProfitMode !== "none" && takeProfitTargetPrice != null && (
-              <div className="mt-4 rounded-lg border border-profit/20 bg-profit/10 p-3">
-                <p className="text-2xs font-medium uppercase tracking-[0.18em] text-profit">
-                  {TAKE_PROFIT_TARGET_LABEL}
-                </p>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <p className="text-2xs text-text-muted">{TAKE_PROFIT_TARGET_MODE}</p>
-                    <p className="mt-1 text-sm font-semibold text-text-primary">
-                      {form.takeProfitMode === "price"
-                        ? TAKE_PROFIT_MODE_PRICE_SHORT
-                        : TAKE_PROFIT_MODE_PERCENT_SHORT}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-2xs text-text-muted">{TAKE_PROFIT_TARGET_PRICE}</p>
-                    <p className="mt-1 text-sm font-semibold text-text-primary tabular-nums">
-                      {formatPrice(takeProfitTargetPrice, form.currency)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -407,7 +321,7 @@ export function DcaForm({
           label={NOTES_LABEL}
           value={form.notes}
           onChange={(event) => set("notes")(event.target.value)}
-          placeholder={NOTES_PLACEHOLDER}
+          placeholder={copy.notesPlaceholder}
           className="min-h-[100px]"
         />
       </div>

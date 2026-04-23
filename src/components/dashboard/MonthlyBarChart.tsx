@@ -26,6 +26,7 @@ function useChartColors() {
   useEffect(() => {
     const root = document.documentElement;
     const style = getComputedStyle(root);
+
     function update() {
       setColors({
         grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
@@ -33,6 +34,7 @@ function useChartColors() {
         cursor: style.getPropertyValue("--chart-cursor").trim() || "#3a3a3a",
       });
     }
+
     update();
 
     const observer = new MutationObserver(update);
@@ -42,8 +44,6 @@ function useChartColors() {
 
   return colors;
 }
-
-// ─── Tooltip ─────────────────────────────────────────────────────────────────
 
 function ChartTooltip({
   active,
@@ -57,32 +57,32 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   const isPositive = d.pnl >= 0;
+
   return (
-    <div className="bg-surface-2 border border-border rounded-lg px-3 py-2.5 shadow-card text-xs min-w-[140px]">
-      <p className="text-text-muted mb-1.5">{label ?? d.label}</p>
+    <div className="min-w-[140px] rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-xs shadow-card">
+      <p className="mb-1.5 text-text-muted">{label ?? d.label}</p>
       <p
-        className={`font-semibold text-sm tabular-nums ${
+        className={cn(
+          "text-sm font-semibold tabular-nums",
           isPositive ? "text-profit" : "text-loss"
-        }`}
+        )}
       >
         {isPositive ? "+" : ""}
         {formatCurrency(d.pnl)}
       </p>
-      <p className="text-text-muted mt-0.5">
-        {d.trades} 笔交易
-      </p>
+      <p className="mt-0.5 text-text-muted">{d.trades} \u6761\u5df2\u5b9e\u73b0\u8bb0\u5f55</p>
     </div>
   );
 }
-
-// ─── Axis formatters ─────────────────────────────────────────────────────────
 
 function formatYAxis(v: number): string {
   if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(0)}k`;
   return `$${v}`;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export default function MonthlyBarChart() {
   const data = useMonthlyPnl();
@@ -90,8 +90,8 @@ export default function MonthlyBarChart() {
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-52 text-sm text-text-muted">
-        暂无已平仓交易
+      <div className="flex h-52 items-center justify-center text-sm text-text-muted">
+        \u6682\u65e0\u5df2\u5b9e\u73b0\u76c8\u4e8f\u8bb0\u5f55
       </div>
     );
   }

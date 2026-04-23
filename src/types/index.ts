@@ -5,7 +5,7 @@ export type TradeStatus = "open" | "closed";
 export type TradePricingMode = "manual" | "binance";
 export type BinanceMarketType = "spot" | "usdm-futures";
 export type DcaAssetClass = "stock" | "crypto";
-export type DcaTakeProfitMode = "price" | "percent";
+export type DcaEntrySide = "buy" | "sell";
 export type AssetClass =
   | "stock"
   | "etf"
@@ -76,6 +76,7 @@ export interface DcaEntry {
   id: string;
   ticker: string;
   name?: string;
+  side?: DcaEntrySide;
   assetClass: DcaAssetClass;
   currency: Currency;
   investedAt: string;
@@ -85,9 +86,6 @@ export interface DcaEntry {
   quoteSymbol?: string;
   quoteCurrency?: Currency;
   priceUpdatedAt?: string;
-  takeProfitMode?: DcaTakeProfitMode;
-  takeProfitPrice?: number;
-  takeProfitPercent?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -105,6 +103,8 @@ export interface PortfolioStats {
   combinedNetPnl: number;
   totalNetPnl: number;
   totalGrossPnl: number;
+  tradeRealisedNetPnl: number;
+  dcaRealisedNetPnl: number;
   tradeUnrealisedNetPnl: number;
   dcaUnrealisedNetPnl: number;
   dcaMarketValue: number;

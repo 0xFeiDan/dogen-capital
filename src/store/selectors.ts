@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { buildDcaPositionSummaries, getDcaEntrySide } from "@/lib/dca";
 import { useTrades } from "./useTrades";
 import { useThoughts } from "./useThoughts";
 import { usePortfolioSettings } from "./usePortfolioSettings";
@@ -51,30 +52,31 @@ function isDashboardDcaEntry(entry: DcaEntry): boolean {
 }
 
 function computeDcaUnrealisedPnL(entries: DcaEntry[]) {
-  const dashboardEntries = entries.filter(isDashboardDcaEntry);
-  const pricedEntries = dashboardEntries.filter(
-    (entry) => entry.currentPrice != null && entry.currentPrice > 0
-  );
-  const dcaInvested = dashboardEntries.reduce(
-    (sum, entry) => sum + entry.investedAmount,
+  const { positions, computedEntries } = buildDcaPositionSummaries(entries.filter(isDashboardDcaEntry));
+  const activePositions = positions.filter((position) => position.remainingQuantity > 0);
+  const dcaInvested = activePositions.reduce(
+    (sum, position) => sum + position.remainingCostBasis,
     0
   );
-  const dcaMarketValue = dashboardEntries.reduce((sum, entry) => {
-    const price = entry.currentPrice ?? entry.investedAmount / entry.quantity;
-    return sum + price * entry.quantity;
-  }, 0);
-  const dcaUnrealisedNetPnl = pricedEntries.reduce(
-    (sum, entry) => sum + entry.currentPrice! * entry.quantity - entry.investedAmount,
+  const dcaMarketValue = activePositions.reduce(
+    (sum, position) => sum + position.marketValue,
     0
   );
-  const dcaPositions = new Set(
-    dashboardEntries.map((entry) => `${entry.assetClass}:${entry.currency}:${entry.ticker}`)
-  ).size;
+  const dcaUnrealisedNetPnl = activePositions.reduce(
+    (sum, position) => sum + position.unrealizedPnl,
+    0
+  );
+  const dcaRealisedNetPnl = computedEntries.reduce(
+    (sum, entry) => sum + (entry.side === "sell" ? entry.realisedPnl ?? 0 : 0),
+    0
+  );
+  const dcaPositions = activePositions.length;
 
   return {
     dcaInvested,
     dcaMarketValue,
     dcaUnrealisedNetPnl,
+    dcaRealisedNetPnl,
     dcaPositions,
   };
 }
@@ -104,11 +106,13 @@ export function computePortfolioStats(
   const {
     dcaInvested,
     dcaMarketValue,
+    dcaRealisedNetPnl,
     dcaUnrealisedNetPnl,
     dcaPositions,
   } = computeDcaUnrealisedPnL(dcaEntries);
   const unrealisedNetPnl = tradeUnrealisedNetPnl + dcaUnrealisedNetPnl;
-  const combinedNetPnl = totalNetPnl + unrealisedNetPnl;
+  const realisedNetPnl = totalNetPnl + dcaRealisedNetPnl;
+  const combinedNetPnl = realisedNetPnl + unrealisedNetPnl;
   const totalWins = wins.reduce((sum, item) => sum + item.pnl.net, 0);
   const totalLosses = Math.abs(
     losses.reduce((sum, item) => sum + item.pnl.net, 0)
@@ -138,11 +142,13 @@ export function computePortfolioStats(
     closedTrades: closed.length,
     openTrades: open.length,
     winRate: pnls.length > 0 ? (wins.length / pnls.length) * 100 : 0,
-    realisedNetPnl: totalNetPnl,
+    realisedNetPnl,
     unrealisedNetPnl,
     combinedNetPnl,
-    totalNetPnl,
+    totalNetPnl: realisedNetPnl,
     totalGrossPnl,
+    tradeRealisedNetPnl: totalNetPnl,
+    dcaRealisedNetPnl,
     tradeUnrealisedNetPnl,
     dcaUnrealisedNetPnl,
     dcaMarketValue,
@@ -163,24 +169,38 @@ export function computePortfolioStats(
   };
 }
 
+function buildDcaRealisedEvents(dcaEntries: DcaEntry[]) {
+  const { computedEntries } = buildDcaPositionSummaries(dcaEntries.filter(isDashboardDcaEntry));
+
+  return computedEntries
+    .filter((entry) => entry.side === "sell" && entry.realisedPnl != null)
+    .map((entry) => ({
+      date: entry.investedAt,
+      pnl: entry.realisedPnl ?? 0,
+    }));
+}
+
 export function computeEquityCurve(
   trades: Trade[],
+  dcaEntries: DcaEntry[] = [],
   initialCapital = 0
 ): EquityPoint[] {
-  const closed = trades
+  const tradeEvents = trades
     .filter((trade) => trade.status === "closed" && trade.exitDate)
-    .sort((a, b) => a.exitDate!.localeCompare(b.exitDate!));
+    .map((trade) => ({
+      date: trade.exitDate!,
+      pnl: computeTradePnL(trade)?.net ?? 0,
+    }));
+  const dcaEvents = buildDcaRealisedEvents(dcaEntries);
+  const events = [...tradeEvents, ...dcaEvents].sort((a, b) => a.date.localeCompare(b.date));
 
   let cumPnl = 0;
   const points: EquityPoint[] = [];
 
-  for (const trade of closed) {
-    const pnl = computeTradePnL(trade);
-    if (!pnl) continue;
-
-    cumPnl += pnl.net;
+  for (const event of events) {
+    cumPnl += event.pnl;
     points.push({
-      date: trade.exitDate!,
+      date: event.date,
       cumPnl: Math.round(cumPnl * 100) / 100,
       nav: Math.round((initialCapital + cumPnl) * 100) / 100,
       trades: points.length + 1,
@@ -190,7 +210,7 @@ export function computeEquityCurve(
   return points;
 }
 
-export function computeMonthlyPnl(trades: Trade[]): MonthlyPnl[] {
+export function computeMonthlyPnl(trades: Trade[], dcaEntries: DcaEntry[] = []): MonthlyPnl[] {
   const map = new Map<string, { pnl: number; trades: number }>();
 
   for (const trade of trades) {
@@ -204,6 +224,16 @@ export function computeMonthlyPnl(trades: Trade[]): MonthlyPnl[] {
 
     map.set(month, {
       pnl: existing.pnl + pnl.net,
+      trades: existing.trades + 1,
+    });
+  }
+
+  for (const event of buildDcaRealisedEvents(dcaEntries)) {
+    const month = event.date.slice(0, 7);
+    const existing = map.get(month) ?? { pnl: 0, trades: 0 };
+
+    map.set(month, {
+      pnl: existing.pnl + event.pnl,
       trades: existing.trades + 1,
     });
   }
@@ -306,22 +336,29 @@ export function computePortfolioAllocation(
     }
   }
 
-  for (const entry of dcaEntries.filter(isDashboardDcaEntry)) {
-    const price = entry.currentPrice ?? entry.investedAmount / entry.quantity;
-    const marketValue = price * entry.quantity;
-    const existing = allocationMap.get(entry.assetClass) ?? {
-      label: assetLabels[entry.assetClass],
+  const dashboardDcaEntries = dcaEntries.filter(isDashboardDcaEntry);
+  const { positions } = buildDcaPositionSummaries(dashboardDcaEntries);
+
+  for (const position of positions.filter((item) => item.remainingQuantity > 0)) {
+    const existing = allocationMap.get(position.assetClass) ?? {
+      label: assetLabels[position.assetClass],
       value: 0,
       count: 0,
     };
 
-    allocationMap.set(entry.assetClass, {
+    allocationMap.set(position.assetClass, {
       ...existing,
-      value: existing.value + Math.abs(marketValue),
+      value: existing.value + Math.abs(position.marketValue),
       count: existing.count + 1,
     });
+  }
 
-    cashValue -= entry.investedAmount;
+  for (const entry of dashboardDcaEntries) {
+    if (getDcaEntrySide(entry) === "sell") {
+      cashValue += entry.investedAmount;
+    } else {
+      cashValue -= entry.investedAmount;
+    }
   }
 
   const rows: PortfolioAllocation[] = Array.from(allocationMap.entries()).map(
@@ -387,17 +424,19 @@ export function usePortfolioStats(): PortfolioStats {
 
 export function useEquityCurve(): EquityPoint[] {
   const trades = useTrades((state) => state.trades);
+  const dcaEntries = useDcaEntries((state) => state.entries);
   const initialCapital = usePortfolioSettings((state) => state.initialCapital);
 
   return useMemo(
-    () => computeEquityCurve(trades, initialCapital),
-    [initialCapital, trades]
+    () => computeEquityCurve(trades, dcaEntries, initialCapital),
+    [dcaEntries, initialCapital, trades]
   );
 }
 
 export function useMonthlyPnl(): MonthlyPnl[] {
   const trades = useTrades((state) => state.trades);
-  return useMemo(() => computeMonthlyPnl(trades), [trades]);
+  const dcaEntries = useDcaEntries((state) => state.entries);
+  return useMemo(() => computeMonthlyPnl(trades, dcaEntries), [dcaEntries, trades]);
 }
 
 export function useAssetBreakdown(): AssetBreakdown[] {

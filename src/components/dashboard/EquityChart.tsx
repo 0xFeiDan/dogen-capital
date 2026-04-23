@@ -26,6 +26,7 @@ function useChartColors() {
   useEffect(() => {
     const root = document.documentElement;
     const style = getComputedStyle(root);
+
     function update() {
       setColors({
         grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
@@ -34,6 +35,7 @@ function useChartColors() {
         dotBg: style.getPropertyValue("--chart-dot-bg").trim() || "#111111",
       });
     }
+
     update();
 
     const observer = new MutationObserver(update);
@@ -57,19 +59,19 @@ function ChartTooltip({
   const isPositive = d.cumPnl >= 0;
 
   return (
-    <div className="bg-surface-2 border border-border rounded-lg px-3 py-2.5 shadow-card text-xs min-w-[160px]">
-      <p className="text-text-muted mb-1.5">{formatDate(d.date)}</p>
-      <p className="font-semibold text-sm tabular-nums text-text-primary">
+    <div className="min-w-[160px] rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-xs shadow-card">
+      <p className="mb-1.5 text-text-muted">{formatDate(d.date)}</p>
+      <p className="text-sm font-semibold tabular-nums text-text-primary">
         {formatCurrency(d.nav)}
       </p>
-      <p className="text-text-muted mt-0.5">
-        累计净盈亏{" "}
+      <p className="mt-0.5 text-text-muted">
+        \u7d2f\u8ba1\u5df2\u5b9e\u73b0{" "}
         <span className={isPositive ? "text-profit" : "text-loss"}>
           {isPositive ? "+" : ""}
           {formatCurrency(d.cumPnl)}
         </span>
       </p>
-      <p className="text-text-muted mt-0.5">{d.trades} 笔已平仓</p>
+      <p className="mt-0.5 text-text-muted">{d.trades} \u6761\u5df2\u5b9e\u73b0\u8bb0\u5f55</p>
     </div>
   );
 }
@@ -92,8 +94,8 @@ export default function EquityChart() {
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-52 text-sm text-text-muted">
-        暂无已平仓交易
+      <div className="flex h-52 items-center justify-center text-sm text-text-muted">
+        \u6682\u65e0\u5df2\u5b9e\u73b0\u76c8\u4e8f\u8bb0\u5f55
       </div>
     );
   }

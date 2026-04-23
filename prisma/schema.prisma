@@ -71,6 +71,7 @@ model DcaRecord {
   profileId      String
   ticker         String
   name           String?
+  side           String?
   assetClass     String
   currency       String
   investedAt     String
@@ -80,9 +81,6 @@ model DcaRecord {
   quoteSymbol    String?
   quoteCurrency  String?
   priceUpdatedAt String?
-  takeProfitMode String?
-  takeProfitPrice Float?
-  takeProfitPercent Float?
   notes          String?
   createdAt      String
   updatedAt      String

@@ -1,6 +1,6 @@
 import type { DcaEntry, Thought, Trade } from "@/types";
 import { db } from "@/lib/db";
-import { normalizeDcaTakeProfit } from "@/lib/dca";
+import { getDcaEntrySide } from "@/lib/dca";
 import { normalizeTrade } from "@/lib/pricing";
 import { APP_USERS, type AppUserId, type AppUserProfile, isAppUserId } from "@/lib/users";
 
@@ -73,6 +73,7 @@ async function ensureDatabaseSchema() {
       "profileId" TEXT NOT NULL,
       "ticker" TEXT NOT NULL,
       "name" TEXT,
+      "side" TEXT,
       "assetClass" TEXT NOT NULL,
       "currency" TEXT NOT NULL,
       "investedAt" TEXT NOT NULL,
@@ -82,9 +83,6 @@ async function ensureDatabaseSchema() {
       "quoteSymbol" TEXT,
       "quoteCurrency" TEXT,
       "priceUpdatedAt" TEXT,
-      "takeProfitMode" TEXT,
-      "takeProfitPrice" REAL,
-      "takeProfitPercent" REAL,
       "notes" TEXT,
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
@@ -175,6 +173,12 @@ async function ensureDatabaseSchema() {
     );
   }
 
+  if (!dcaColumnNames.has("side")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "side" TEXT`
+    );
+  }
+
   if (!dcaColumnNames.has("quoteSymbol")) {
     await db.$executeRawUnsafe(
       `ALTER TABLE "DcaRecord" ADD COLUMN "quoteSymbol" TEXT`
@@ -190,24 +194,6 @@ async function ensureDatabaseSchema() {
   if (!dcaColumnNames.has("priceUpdatedAt")) {
     await db.$executeRawUnsafe(
       `ALTER TABLE "DcaRecord" ADD COLUMN "priceUpdatedAt" TEXT`
-    );
-  }
-
-  if (!dcaColumnNames.has("takeProfitMode")) {
-    await db.$executeRawUnsafe(
-      `ALTER TABLE "DcaRecord" ADD COLUMN "takeProfitMode" TEXT`
-    );
-  }
-
-  if (!dcaColumnNames.has("takeProfitPrice")) {
-    await db.$executeRawUnsafe(
-      `ALTER TABLE "DcaRecord" ADD COLUMN "takeProfitPrice" REAL`
-    );
-  }
-
-  if (!dcaColumnNames.has("takeProfitPercent")) {
-    await db.$executeRawUnsafe(
-      `ALTER TABLE "DcaRecord" ADD COLUMN "takeProfitPercent" REAL`
     );
   }
 }
@@ -447,6 +433,7 @@ function toDcaEntry(record: {
   profileId: string;
   ticker: string;
   name: string | null;
+  side: string | null;
   assetClass: string;
   currency: string;
   investedAt: string;
@@ -456,9 +443,6 @@ function toDcaEntry(record: {
   quoteSymbol: string | null;
   quoteCurrency: string | null;
   priceUpdatedAt: string | null;
-  takeProfitMode: string | null;
-  takeProfitPrice: number | null;
-  takeProfitPercent: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -466,19 +450,12 @@ function toDcaEntry(record: {
   const logicalId = isAppUserId(record.profileId)
     ? fromScopedId(record.profileId, record.id)
     : record.id;
-  const takeProfit = normalizeDcaTakeProfit({
-    takeProfitMode:
-      record.takeProfitMode === "price" || record.takeProfitMode === "percent"
-        ? record.takeProfitMode
-        : undefined,
-    takeProfitPrice: record.takeProfitPrice ?? undefined,
-    takeProfitPercent: record.takeProfitPercent ?? undefined,
-  });
 
   return {
     id: logicalId,
     ticker: record.ticker,
     name: record.name ?? undefined,
+    side: record.side === "sell" ? "sell" : "buy",
     assetClass: record.assetClass as DcaEntry["assetClass"],
     currency: record.currency as DcaEntry["currency"],
     investedAt: record.investedAt,
@@ -490,9 +467,6 @@ function toDcaEntry(record: {
       ? (record.quoteCurrency as DcaEntry["quoteCurrency"])
       : undefined,
     priceUpdatedAt: record.priceUpdatedAt ?? undefined,
-    takeProfitMode: takeProfit.takeProfitMode,
-    takeProfitPrice: takeProfit.takeProfitPrice,
-    takeProfitPercent: takeProfit.takeProfitPercent,
     notes: record.notes ?? undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -703,7 +677,6 @@ export async function upsertDcaEntry(
   entry: DcaEntry
 ): Promise<DcaEntry> {
   await ensureServerSetup();
-  const takeProfit = normalizeDcaTakeProfit(entry);
 
   const scopedId = toScopedId(profileId, entry.id);
   const existing = await db.dcaRecord.findFirst({
@@ -718,6 +691,7 @@ export async function upsertDcaEntry(
     profileId,
     ticker: entry.ticker,
     name: entry.name ?? null,
+    side: getDcaEntrySide(entry),
     assetClass: entry.assetClass,
     currency: entry.currency,
     investedAt: entry.investedAt,
@@ -727,9 +701,6 @@ export async function upsertDcaEntry(
     quoteSymbol: entry.quoteSymbol ?? null,
     quoteCurrency: entry.quoteCurrency ?? null,
     priceUpdatedAt: entry.priceUpdatedAt ?? null,
-    takeProfitMode: takeProfit.takeProfitMode ?? null,
-    takeProfitPrice: takeProfit.takeProfitPrice ?? null,
-    takeProfitPercent: takeProfit.takeProfitPercent ?? null,
     notes: entry.notes ?? null,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -981,32 +952,26 @@ async function replaceProfileDcaEntries(profileId: AppUserId, entries: DcaEntry[
     await tx.dcaRecord.deleteMany({ where: { profileId } });
 
     if (entries.length > 0) {
-      await tx.dcaRecord.createMany({
-        data: entries.map((entry) => {
-          const takeProfit = normalizeDcaTakeProfit(entry);
-
-          return {
+        await tx.dcaRecord.createMany({
+          data: entries.map((entry) => ({
             id: toScopedId(profileId, entry.id),
             profileId,
             ticker: entry.ticker,
             name: entry.name ?? null,
+            side: getDcaEntrySide(entry),
             assetClass: entry.assetClass,
-            currency: entry.currency,
-            investedAt: entry.investedAt,
-            investedAmount: entry.investedAmount,
-            quantity: entry.quantity,
-            currentPrice: entry.currentPrice ?? null,
-            quoteSymbol: entry.quoteSymbol ?? null,
-            quoteCurrency: entry.quoteCurrency ?? null,
-            priceUpdatedAt: entry.priceUpdatedAt ?? null,
-            takeProfitMode: takeProfit.takeProfitMode ?? null,
-            takeProfitPrice: takeProfit.takeProfitPrice ?? null,
-            takeProfitPercent: takeProfit.takeProfitPercent ?? null,
-            notes: entry.notes ?? null,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
-          };
-        }),
+          currency: entry.currency,
+          investedAt: entry.investedAt,
+          investedAmount: entry.investedAmount,
+          quantity: entry.quantity,
+          currentPrice: entry.currentPrice ?? null,
+          quoteSymbol: entry.quoteSymbol ?? null,
+          quoteCurrency: entry.quoteCurrency ?? null,
+          priceUpdatedAt: entry.priceUpdatedAt ?? null,
+          notes: entry.notes ?? null,
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
+        })),
       });
     }
   });

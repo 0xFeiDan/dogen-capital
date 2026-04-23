@@ -17,7 +17,6 @@ import type {
   Currency,
   ThoughtCategory,
 } from "@/types";
-import { normalizeDcaTakeProfit } from "@/lib/dca";
 import { normalizeBinanceSymbol, normalizeTrade } from "@/lib/pricing";
 
 const DCA_ASSET_CLASSES = ["stock", "crypto"] as const;
@@ -666,14 +665,6 @@ function validateDcaObject(
   const investedAmount = parseFiniteNumber(o.investedAmount);
   const quantity = parseFiniteNumber(o.quantity);
   const currentPrice = parseOptionalFiniteNumber(o.currentPrice);
-  const takeProfit = normalizeDcaTakeProfit({
-    takeProfitMode:
-      o.takeProfitMode === "price" || o.takeProfitMode === "percent"
-        ? o.takeProfitMode
-        : undefined,
-    takeProfitPrice: parseOptionalFiniteNumber(o.takeProfitPrice) ?? undefined,
-    takeProfitPercent: parseOptionalFiniteNumber(o.takeProfitPercent) ?? undefined,
-  });
 
   if (!ticker) {
     return { entry: null, error: `Item ${rowNum}: missing ticker - skipped` };
@@ -710,6 +701,7 @@ function validateDcaObject(
       id: String(o.id ?? `dca_imp_${Date.now()}_${rowNum}`),
       ticker,
       name: o.name ? String(o.name).trim() : undefined,
+      side: o.side === "sell" ? "sell" : "buy",
       assetClass: assetClass as DcaEntry["assetClass"],
       currency: currency as Currency,
       investedAt,
@@ -721,9 +713,6 @@ function validateDcaObject(
         ? (quoteCurrency as Currency)
         : undefined,
       priceUpdatedAt: o.priceUpdatedAt ? String(o.priceUpdatedAt) : undefined,
-      takeProfitMode: takeProfit.takeProfitMode,
-      takeProfitPrice: takeProfit.takeProfitPrice,
-      takeProfitPercent: takeProfit.takeProfitPercent,
       notes: o.notes ? String(o.notes) : undefined,
       createdAt: String(o.createdAt ?? new Date().toISOString()),
       updatedAt: String(o.updatedAt ?? new Date().toISOString()),

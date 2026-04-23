@@ -16,6 +16,7 @@ function isValidDcaEntry(entry: DcaEntry | undefined): entry is DcaEntry {
       entry.id &&
       typeof entry.ticker === "string" &&
       entry.ticker &&
+      (entry.side == null || entry.side === "buy" || entry.side === "sell") &&
       (entry.assetClass === "stock" || entry.assetClass === "crypto") &&
       typeof entry.currency === "string" &&
       typeof entry.investedAt === "string" &&
@@ -23,13 +24,6 @@ function isValidDcaEntry(entry: DcaEntry | undefined): entry is DcaEntry {
       entry.investedAmount > 0 &&
       Number.isFinite(entry.quantity) &&
       entry.quantity > 0 &&
-      (entry.takeProfitMode == null ||
-        entry.takeProfitMode === "price" ||
-        entry.takeProfitMode === "percent") &&
-      (entry.takeProfitPrice == null ||
-        (Number.isFinite(entry.takeProfitPrice) && entry.takeProfitPrice > 0)) &&
-      (entry.takeProfitPercent == null ||
-        (Number.isFinite(entry.takeProfitPercent) && entry.takeProfitPercent > 0)) &&
       typeof entry.createdAt === "string" &&
       typeof entry.updatedAt === "string"
   );

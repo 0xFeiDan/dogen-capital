@@ -5,102 +5,75 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
-import { getDcaTakeProfitTargetPrice, normalizeDcaTakeProfit } from "@/lib/dca";
+import { buildDcaPositionSummaries, type DcaComputedEntry, type DcaPositionSummary } from "@/lib/dca";
 import { deleteDcaEntryFromServer } from "@/lib/server-sync-client";
-import { cn, formatCurrency, formatDate, formatPercent, formatPrice } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatPrice } from "@/lib/utils";
 import { useAppUsers } from "@/store/useAppUsers";
 import { useDcaEntries } from "@/store/useDcaEntries";
-import type { Currency, DcaAssetClass, DcaEntry, DcaTakeProfitMode } from "@/types";
+import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
 import { DcaDrawer } from "./DcaDrawer";
 import { dcaToForm, type DcaFormState } from "./DcaForm";
 
 type AssetFilter = "all" | DcaAssetClass;
 
-interface DcaPosition {
-  key: string;
-  ticker: string;
-  name?: string;
-  repeatEntry: DcaEntry;
-  assetClass: DcaAssetClass;
-  currency: Currency;
-  totalInvestedAmount: number;
-  totalQuantity: number;
-  averageCost: number;
-  currentPrice?: number;
-  marketValue: number;
-  unrealizedPnl: number;
-  entriesCount: number;
-  lastInvestedAt: string;
-  takeProfitMode?: DcaTakeProfitMode;
-  takeProfitPrice?: number;
-  takeProfitPercent?: number;
-  takeProfitTargetPrice?: number;
-  takeProfitTriggered: boolean;
-}
-
 const PAGE_BLURB =
-  "\u624b\u52a8\u8bb0\u5f55\u6bcf\u4e00\u6b21\u5b9a\u6295\u7684\u91d1\u989d\u548c\u6570\u91cf\uff0c\u7cfb\u7edf\u4f1a\u5c1d\u8bd5\u7528 Binance / Twelve Data \u5237\u65b0\u5b9e\u65f6\u4ef7\u683c\u3002";
-const ADD_ENTRY_TEXT = "\u65b0\u589e\u5b9a\u6295";
-const SEARCH_PLACEHOLDER = "\u641c\u7d22\u4ee3\u7801\u3001\u540d\u79f0\u6216\u5907\u6ce8";
+  "\u5b9a\u6295\u9875\u73b0\u5728\u540c\u65f6\u8bb0\u5f55\u4e70\u5165\u548c\u6b62\u76c8\u5356\u51fa\u6d41\u6c34\uff0c\u7cfb\u7edf\u4f1a\u81ea\u52a8\u7edf\u8ba1\u5269\u4f59\u6301\u4ed3\u3001\u5269\u4f59\u6210\u672c\u3001\u5df2\u5b9e\u73b0\u76c8\u4e8f\u4e0e\u5b9e\u65f6\u5e02\u503c\u3002";
+const ADD_ENTRY_TEXT = "\u65b0\u589e\u4e70\u5165";
+const ADD_SELL_TEXT = "\u8bb0\u5f55\u6b62\u76c8\u5356\u51fa";
+const SEARCH_PLACEHOLDER = "\u641c\u7d22\u4ee3\u7801\u3001\u540d\u79f0\u3001\u5907\u6ce8";
 const FILTER_ALL = "\u5168\u90e8";
 const FILTER_STOCK = "\u80a1\u7968";
 const FILTER_CRYPTO = "\u865a\u62df\u8d27\u5e01";
-const POSITIONS_TITLE = "\u6301\u4ed3\u6210\u672c\u6c47\u603b";
-const RECORDS_TITLE = "\u5b9a\u6295\u8bb0\u5f55";
-const DELETE_DIALOG_TITLE = "\u5220\u9664\u5b9a\u6295\u8bb0\u5f55\uff1f";
+const POSITIONS_TITLE = "\u5269\u4f59\u6301\u4ed3";
+const RECORDS_TITLE = "\u5b9a\u6295\u6d41\u6c34";
+const DELETE_DIALOG_TITLE = "\u5220\u9664\u8bb0\u5f55\uff1f";
 const DELETE_LABEL = "\u5220\u9664";
 const DELETE_ERROR = "\u5220\u9664\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5";
 const EMPTY_TITLE = "\u8fd8\u6ca1\u6709\u5b9a\u6295\u8bb0\u5f55";
 const EMPTY_TEXT =
-  "\u4f60\u53ef\u4ee5\u5148\u6dfb\u52a0\u80a1\u7968\u6216\u865a\u62df\u8d27\u5e01\u7684\u624b\u52a8\u5b9a\u6295\uff0c\u7cfb\u7edf\u4f1a\u81ea\u52a8\u5e2e\u4f60\u6c47\u603b\u6210\u672c\u548c\u7d2f\u8ba1\u6570\u91cf\u3002";
-const METRIC_POSITIONS = "\u6301\u4ed3\u6807\u7684";
-const METRIC_RECORDS = "\u5b9a\u6295\u6b21\u6570";
-const METRIC_STOCKS = "\u80a1\u7968\u6807\u7684";
-const METRIC_CRYPTOS = "\u5e01\u79cd\u6807\u7684";
-const METRIC_INVESTED = "\u7d2f\u8ba1\u6295\u5165";
+  "\u4f60\u53ef\u4ee5\u5148\u6dfb\u52a0\u4e00\u7b14\u4e70\u5165\uff0c\u540e\u9762\u518d\u7528\u201c\u6b62\u76c8\u5356\u51fa\u201d\u628a\u771f\u5b9e\u7684\u5356\u51fa\u8bb0\u5f55\u8865\u8fdb\u6765\u3002";
+const METRIC_POSITIONS = "\u5269\u4f59\u6301\u4ed3";
+const METRIC_RECORDS = "\u603b\u8bb0\u5f55";
+const METRIC_STOCKS = "\u80a1\u7968\u6301\u4ed3";
+const METRIC_CRYPTOS = "\u5e01\u79cd\u6301\u4ed3";
+const METRIC_COST_BASIS = "\u5269\u4f59\u6210\u672c";
+const METRIC_REALISED = "\u5df2\u5b9e\u73b0";
 const METRIC_MARKET_VALUE = "\u5f53\u524d\u5e02\u503c";
 const METRIC_FLOATING_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
 const MULTI_CURRENCY_LABEL = "\u591a\u5e01\u79cd";
 const POSITIONS_SUB =
-  "\u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u65b9\u4fbf\u67e5\u770b\u7d2f\u8ba1\u6210\u672c\u3001\u5b9e\u65f6\u5e02\u503c\u548c\u6d6e\u52a8\u76c8\u4e8f\u3002";
+  "\u6309\u4ee3\u7801 + \u5e01\u79cd\u6c47\u603b\uff0c\u5c55\u793a\u5269\u4f59\u6210\u672c\u3001\u5269\u4f59\u4ed3\u4f4d\u3001\u5df2\u5b9e\u73b0\u76c8\u4e8f\u548c\u672a\u5b9e\u73b0\u76c8\u4e8f\u3002";
 const RECORDS_SUB =
-  "\u4fdd\u7559\u6bcf\u4e00\u7b14\u539f\u59cb\u8f93\u5165\uff0c\u540e\u9762\u4f60\u60f3\u56de\u770b\u8282\u594f\u3001\u52a0\u4ed3\u65f6\u70b9\u4e5f\u4f1a\u6bd4\u8f83\u65b9\u4fbf\u3002";
-const FILTER_EMPTY_TEXT =
-  "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5b9a\u6295\u8bb0\u5f55\u3002";
-const RECORD_FILTER_EMPTY_TEXT =
-  "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u5b9a\u6295\u8bb0\u5f55\u3002";
+  "\u6bcf\u4e00\u7b14\u4e70\u5165\u548c\u6b62\u76c8\u5356\u51fa\u90fd\u4fdd\u7559\u4e3a\u72ec\u7acb\u8bb0\u5f55\uff0c\u65b9\u4fbf\u4f60\u56de\u770b\u8282\u594f\u548c\u9501\u5229\u7ed3\u679c\u3002";
+const FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5269\u4f59\u6301\u4ed3\u3002";
+const RECORD_FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u6d41\u6c34\u8bb0\u5f55\u3002";
 const NO_PRICE_TEXT = "\u7b49\u5f85\u884c\u60c5";
 const POSITION_COL_TICKER = "\u6807\u7684";
 const POSITION_COL_CLASS = "\u677f\u5757";
-const POSITION_COL_INVESTED = "\u7d2f\u8ba1\u6295\u5165";
-const POSITION_COL_QUANTITY = "\u7d2f\u8ba1\u6570\u91cf";
-const POSITION_COL_COST = "\u6301\u4ed3\u5747\u4ef7";
+const POSITION_COL_COST = "\u5269\u4f59\u6210\u672c";
+const POSITION_COL_QUANTITY = "\u5269\u4f59\u6570\u91cf";
+const POSITION_COL_AVG_COST = "\u6301\u4ed3\u5747\u4ef7";
 const POSITION_COL_PRICE = "\u5f53\u524d\u4ef7";
 const POSITION_COL_VALUE = "\u5f53\u524d\u5e02\u503c";
-const POSITION_COL_PNL = "\u6d6e\u52a8\u76c8\u4e8f";
-const POSITION_COL_TAKE_PROFIT = "\u6b62\u76c8";
-const POSITION_COL_COUNT = "\u6b21\u6570";
+const POSITION_COL_FLOATING = "\u6d6e\u52a8\u76c8\u4e8f";
+const POSITION_COL_REALISED = "\u5df2\u5b9e\u73b0";
+const POSITION_COL_COUNT = "\u8bb0\u5f55\u6570";
 const POSITION_COL_LAST = "\u6700\u8fd1\u4e00\u6b21";
 const RECORD_COL_DATE = "\u65e5\u671f";
+const RECORD_COL_SIDE = "\u7c7b\u578b";
 const RECORD_COL_ASSET = "\u6807\u7684";
-const RECORD_COL_AMOUNT = "\u6295\u5165\u91d1\u989d";
-const RECORD_COL_BOUGHT = "\u4e70\u5165\u6570\u91cf";
-const RECORD_COL_PRICE = "\u672c\u6b21\u5747\u4ef7";
+const RECORD_COL_AMOUNT = "\u91d1\u989d";
+const RECORD_COL_QUANTITY = "\u6570\u91cf";
+const RECORD_COL_PRICE = "\u5747\u4ef7";
 const RECORD_COL_LIVE_PRICE = "\u5f53\u524d\u4ef7";
-const RECORD_COL_TAKE_PROFIT = "\u6b62\u76c8";
+const RECORD_COL_REALISED = "\u5df2\u5b9e\u73b0";
 const RECORD_COL_NOTE = "\u5907\u6ce8";
 const RECORD_COL_ACTION = "\u64cd\u4f5c";
 const ACTION_EDIT = "\u7f16\u8f91";
 const ACTION_REPEAT = "\u518d\u6295";
 const ACTION_DELETE = "\u5220\u9664";
-const TAKE_PROFIT_ALERT_TITLE = "\u6b62\u76c8\u63d0\u9192";
-const TAKE_PROFIT_ALERT_EMPTY = "\u5f53\u524d\u6ca1\u6709\u89e6\u53d1\u7684\u6b62\u76c8\u6807\u7684\u3002";
-const TAKE_PROFIT_TRIGGERED = "\u5df2\u89e6\u53d1";
-const TAKE_PROFIT_NOT_SET = "\u672a\u8bbe\u7f6e";
-const TAKE_PROFIT_MODE_PRICE = "\u76ee\u6807\u4ef7";
-const TAKE_PROFIT_MODE_PERCENT = "\u6536\u76ca\u7387";
-const TAKE_PROFIT_NOT_SET_HINT = "\u8fd8\u6ca1\u6709\u8bbe\u7f6e\u6b62\u76c8\u89c4\u5219";
-const TAKE_PROFIT_TRIGGERED_HINT = "\u5f53\u524d\u4ef7\u5df2\u5230\u8fbe\u6b62\u76c8\u6761\u4ef6";
+const SIDE_BUY = "\u4e70\u5165";
+const SIDE_SELL = "\u6b62\u76c8\u5356\u51fa";
 
 function todayInputDate() {
   const now = new Date();
@@ -119,34 +92,17 @@ function getAssetClassLabel(assetClass: DcaAssetClass): string {
   return assetClass === "stock" ? FILTER_STOCK : FILTER_CRYPTO;
 }
 
-function isNewerDcaEntry(candidate: DcaEntry, current: DcaEntry): boolean {
-  if (candidate.investedAt !== current.investedAt) {
-    return candidate.investedAt > current.investedAt;
-  }
-
-  return candidate.updatedAt > current.updatedAt;
+function getSideLabel(entry: Pick<DcaEntry, "side">): string {
+  return entry.side === "sell" ? SIDE_SELL : SIDE_BUY;
 }
 
-function buildCurrencyBreakdown(entries: DcaEntry[]) {
-  const totals = new Map<Currency, number>();
-
-  entries.forEach((entry) => {
-    totals.set(entry.currency, (totals.get(entry.currency) ?? 0) + entry.investedAmount);
-  });
-
-  return Array.from(totals.entries())
-    .map(([currency, total]) => ({ currency, total }))
-    .sort((a, b) => b.total - a.total);
-}
-
-function buildPositionCurrencyBreakdown(
-  positions: DcaPosition[],
-  selector: (position: DcaPosition) => number
+function buildCurrencyBreakdown(
+  items: Array<{ currency: Currency; value: number }>
 ) {
   const totals = new Map<Currency, number>();
 
-  positions.forEach((position) => {
-    totals.set(position.currency, (totals.get(position.currency) ?? 0) + selector(position));
+  items.forEach((item) => {
+    totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.value);
   });
 
   return Array.from(totals.entries())
@@ -178,124 +134,7 @@ function getBreakdownText(
   };
 }
 
-function buildPositions(entries: DcaEntry[]): DcaPosition[] {
-  const grouped = new Map<string, DcaPosition>();
-
-  entries.forEach((entry) => {
-    const key = `${entry.assetClass}:${entry.currency}:${entry.ticker}`;
-    const current = grouped.get(key);
-    const takeProfit = normalizeDcaTakeProfit(entry);
-
-    if (current) {
-      current.totalInvestedAmount += entry.investedAmount;
-      current.totalQuantity += entry.quantity;
-      if (entry.currentPrice != null && entry.currentPrice > 0) {
-        current.marketValue += entry.currentPrice * entry.quantity;
-        current.unrealizedPnl += entry.currentPrice * entry.quantity - entry.investedAmount;
-        current.currentPrice = current.marketValue / current.totalQuantity;
-      } else {
-        current.marketValue += entry.investedAmount;
-      }
-      current.entriesCount += 1;
-      if (isNewerDcaEntry(entry, current.repeatEntry)) {
-        current.lastInvestedAt = entry.investedAt;
-        current.repeatEntry = entry;
-        current.takeProfitMode = takeProfit.takeProfitMode;
-        current.takeProfitPrice = takeProfit.takeProfitPrice;
-        current.takeProfitPercent = takeProfit.takeProfitPercent;
-      }
-      if (!current.name && entry.name) {
-        current.name = entry.name;
-      }
-      current.averageCost = current.totalInvestedAmount / current.totalQuantity;
-      current.takeProfitTargetPrice = getDcaTakeProfitTargetPrice(current, current.averageCost);
-      current.takeProfitTriggered =
-        current.currentPrice != null &&
-        current.takeProfitTargetPrice != null &&
-        current.currentPrice >= current.takeProfitTargetPrice;
-      return;
-    }
-
-    const averageCost = entry.investedAmount / entry.quantity;
-    const currentPrice =
-      entry.currentPrice != null && entry.currentPrice > 0 ? entry.currentPrice : undefined;
-    const takeProfitTargetPrice = getDcaTakeProfitTargetPrice(takeProfit, averageCost);
-
-    grouped.set(key, {
-      key,
-      ticker: entry.ticker,
-      name: entry.name,
-      repeatEntry: entry,
-      assetClass: entry.assetClass,
-      currency: entry.currency,
-      totalInvestedAmount: entry.investedAmount,
-      totalQuantity: entry.quantity,
-      averageCost,
-      currentPrice,
-      marketValue:
-        currentPrice != null
-          ? currentPrice * entry.quantity
-          : entry.investedAmount,
-      unrealizedPnl:
-        currentPrice != null
-          ? currentPrice * entry.quantity - entry.investedAmount
-          : 0,
-      entriesCount: 1,
-      lastInvestedAt: entry.investedAt,
-      takeProfitMode: takeProfit.takeProfitMode,
-      takeProfitPrice: takeProfit.takeProfitPrice,
-      takeProfitPercent: takeProfit.takeProfitPercent,
-      takeProfitTargetPrice,
-      takeProfitTriggered:
-        currentPrice != null &&
-        takeProfitTargetPrice != null &&
-        currentPrice >= takeProfitTargetPrice,
-    });
-  });
-
-  return Array.from(grouped.values()).sort((a, b) => {
-    if (b.lastInvestedAt !== a.lastInvestedAt) {
-      return b.lastInvestedAt.localeCompare(a.lastInvestedAt);
-    }
-
-    return a.ticker.localeCompare(b.ticker);
-  });
-}
-
-function getTakeProfitText(
-  config: Pick<DcaPosition, "takeProfitMode" | "takeProfitPrice" | "takeProfitPercent">,
-  currency: Currency,
-  averageCost: number
-) {
-  const targetPrice = getDcaTakeProfitTargetPrice(config, averageCost);
-
-  if (!config.takeProfitMode || targetPrice == null) {
-    return {
-      summary: TAKE_PROFIT_NOT_SET,
-      detail: TAKE_PROFIT_NOT_SET_HINT,
-      targetPrice: undefined,
-    };
-  }
-
-  if (config.takeProfitMode === "price") {
-    return {
-      summary: `${TAKE_PROFIT_MODE_PRICE} ${formatPrice(targetPrice, currency)}`,
-      detail:
-        averageCost > 0
-          ? `${formatPercent(((targetPrice - averageCost) / averageCost) * 100)}`
-          : TAKE_PROFIT_MODE_PRICE,
-      targetPrice,
-    };
-  }
-
-  return {
-    summary: `${TAKE_PROFIT_MODE_PERCENT} ${formatPercent(config.takeProfitPercent ?? 0)}`,
-    detail: formatPrice(targetPrice, currency),
-    targetPrice,
-  };
-}
-
-function matchesFilter(entry: DcaEntry, filter: AssetFilter, query: string) {
+function matchesEntryFilter(entry: Pick<DcaEntry, "assetClass" | "ticker" | "name" | "notes">, filter: AssetFilter, query: string) {
   if (filter !== "all" && entry.assetClass !== filter) {
     return false;
   }
@@ -309,6 +148,22 @@ function matchesFilter(entry: DcaEntry, filter: AssetFilter, query: string) {
     entry.ticker.toLowerCase().includes(lowerQuery) ||
     (entry.name ?? "").toLowerCase().includes(lowerQuery) ||
     (entry.notes ?? "").toLowerCase().includes(lowerQuery)
+  );
+}
+
+function matchesPositionFilter(position: DcaPositionSummary, filter: AssetFilter, query: string) {
+  if (filter !== "all" && position.assetClass !== filter) {
+    return false;
+  }
+
+  if (!query) {
+    return true;
+  }
+
+  const lowerQuery = query.toLowerCase();
+  return (
+    position.ticker.toLowerCase().includes(lowerQuery) ||
+    (position.name ?? "").toLowerCase().includes(lowerQuery)
   );
 }
 
@@ -345,60 +200,84 @@ export function DcaView() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  const filteredEntries = useMemo(() => {
-    const normalizedQuery = search.trim().toLowerCase();
-    return [...entries]
-      .filter((entry) => matchesFilter(entry, assetFilter, normalizedQuery))
-      .sort((a, b) => {
-        if (b.investedAt !== a.investedAt) {
-          return b.investedAt.localeCompare(a.investedAt);
-        }
+  const normalizedQuery = search.trim().toLowerCase();
+  const { positions: allPositionSummaries, computedEntries } = useMemo(
+    () => buildDcaPositionSummaries(entries),
+    [entries]
+  );
+  const activePositions = useMemo(
+    () => allPositionSummaries.filter((position) => position.remainingQuantity > 0),
+    [allPositionSummaries]
+  );
+  const filteredEntries = useMemo(
+    () =>
+      computedEntries.filter((entry) => matchesEntryFilter(entry, assetFilter, normalizedQuery)),
+    [assetFilter, computedEntries, normalizedQuery]
+  );
+  const filteredActivePositions = useMemo(
+    () =>
+      activePositions.filter((position) => matchesPositionFilter(position, assetFilter, normalizedQuery)),
+    [activePositions, assetFilter, normalizedQuery]
+  );
+  const filteredPositionSummaries = useMemo(
+    () =>
+      allPositionSummaries.filter((position) =>
+        matchesPositionFilter(position, assetFilter, normalizedQuery)
+      ),
+    [allPositionSummaries, assetFilter, normalizedQuery]
+  );
 
-        return b.updatedAt.localeCompare(a.updatedAt);
-      });
-  }, [assetFilter, entries, search]);
-
-  const positions = useMemo(() => buildPositions(filteredEntries), [filteredEntries]);
-  const allPositions = useMemo(() => buildPositions(entries), [entries]);
-  const currencyBreakdown = useMemo(
-    () => buildCurrencyBreakdown(filteredEntries),
-    [filteredEntries]
+  const remainingCostBreakdown = useMemo(
+    () =>
+      buildCurrencyBreakdown(
+        filteredActivePositions.map((position) => ({
+          currency: position.currency,
+          value: position.remainingCostBasis,
+        }))
+      ),
+    [filteredActivePositions]
+  );
+  const realisedBreakdown = useMemo(
+    () =>
+      buildCurrencyBreakdown(
+        filteredPositionSummaries.map((position) => ({
+          currency: position.currency,
+          value: position.realisedPnl,
+        }))
+      ),
+    [filteredPositionSummaries]
   );
   const marketValueBreakdown = useMemo(
-    () => buildPositionCurrencyBreakdown(positions, (position) => position.marketValue),
-    [positions]
+    () =>
+      buildCurrencyBreakdown(
+        filteredActivePositions.map((position) => ({
+          currency: position.currency,
+          value: position.marketValue,
+        }))
+      ),
+    [filteredActivePositions]
   );
   const floatingPnlBreakdown = useMemo(
-    () => buildPositionCurrencyBreakdown(positions, (position) => position.unrealizedPnl),
-    [positions]
+    () =>
+      buildCurrencyBreakdown(
+        filteredActivePositions.map((position) => ({
+          currency: position.currency,
+          value: position.unrealizedPnl,
+        }))
+      ),
+    [filteredActivePositions]
   );
-  const stockPositions = allPositions.filter((position) => position.assetClass === "stock").length;
-  const cryptoPositions = allPositions.filter(
-    (position) => position.assetClass === "crypto"
-  ).length;
 
-  const investedDisplay = useMemo(() => {
-    if (currencyBreakdown.length === 0) {
-      return "--";
-    }
-
-    if (currencyBreakdown.length === 1) {
-      return formatCurrency(currencyBreakdown[0].total, currencyBreakdown[0].currency);
-    }
-
-    return MULTI_CURRENCY_LABEL;
-  }, [currencyBreakdown]);
-
-  const investedHint = useMemo(() => {
-    if (currencyBreakdown.length === 0) {
-      return "\u6682\u65e0\u6570\u636e";
-    }
-
-    return currencyBreakdown
-      .slice(0, 3)
-      .map(({ currency, total }) => `${currency} ${formatCurrency(total, currency)}`)
-      .join(" / ");
-  }, [currencyBreakdown]);
+  const stockPositions = activePositions.filter((position) => position.assetClass === "stock").length;
+  const cryptoPositions = activePositions.filter((position) => position.assetClass === "crypto").length;
+  const remainingCostText = useMemo(
+    () => getBreakdownText(remainingCostBreakdown),
+    [remainingCostBreakdown]
+  );
+  const realisedText = useMemo(
+    () => getBreakdownText(realisedBreakdown),
+    [realisedBreakdown]
+  );
   const marketValueText = useMemo(
     () => getBreakdownText(marketValueBreakdown),
     [marketValueBreakdown]
@@ -407,14 +286,30 @@ export function DcaView() {
     () => getBreakdownText(floatingPnlBreakdown),
     [floatingPnlBreakdown]
   );
-  const triggeredPositions = useMemo(
-    () => allPositions.filter((position) => position.takeProfitTriggered),
-    [allPositions]
-  );
 
-  function handleNew() {
+  function handleNewBuy() {
     setEditingEntry(null);
-    setDraftValues(null);
+    setDraftValues({
+      ...EMPTY_DRAFT,
+      side: "buy",
+      investedAt: todayInputDate(),
+    });
+    setDrawerOpen(true);
+  }
+
+  function handleSell(position: DcaPositionSummary) {
+    setEditingEntry(null);
+    setDraftValues({
+      ticker: position.ticker,
+      name: position.name ?? "",
+      side: "sell",
+      assetClass: position.assetClass,
+      currency: position.currency,
+      investedAt: todayInputDate(),
+      investedAmount: "",
+      quantity: "",
+      notes: "",
+    });
     setDrawerOpen(true);
   }
 
@@ -429,7 +324,11 @@ export function DcaView() {
     setEditingEntry(null);
     setDraftValues({
       ...nextValues,
+      side: "buy",
       investedAt: todayInputDate(),
+      investedAmount: "",
+      quantity: "",
+      notes: "",
     });
     setDrawerOpen(true);
   }
@@ -461,7 +360,7 @@ export function DcaView() {
     <>
       <div className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
+          <div className="max-w-3xl">
             <p className="text-sm text-text-muted">{PAGE_BLURB}</p>
           </div>
 
@@ -469,19 +368,28 @@ export function DcaView() {
             variant="primary"
             size="sm"
             iconLeft={<Plus className="h-4 w-4" />}
-            onClick={handleNew}
+            onClick={handleNewBuy}
             className="shrink-0 self-start lg:self-auto"
           >
             {ADD_ENTRY_TEXT}
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-          <MetricCard label={METRIC_POSITIONS} value={String(allPositions.length)} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <MetricCard label={METRIC_POSITIONS} value={String(activePositions.length)} />
           <MetricCard label={METRIC_RECORDS} value={String(entries.length)} />
           <MetricCard label={METRIC_STOCKS} value={String(stockPositions)} />
           <MetricCard label={METRIC_CRYPTOS} value={String(cryptoPositions)} />
-          <MetricCard label={METRIC_INVESTED} value={investedDisplay} hint={investedHint} />
+          <MetricCard
+            label={METRIC_COST_BASIS}
+            value={remainingCostText.display}
+            hint={remainingCostText.hint}
+          />
+          <MetricCard
+            label={METRIC_REALISED}
+            value={realisedText.display}
+            hint={realisedText.hint}
+          />
           <MetricCard
             label={METRIC_MARKET_VALUE}
             value={marketValueText.display}
@@ -493,38 +401,6 @@ export function DcaView() {
             hint={floatingPnlText.hint}
           />
         </div>
-
-        <Card
-          className={cn(
-            "border",
-            triggeredPositions.length > 0
-              ? "border-profit/30 bg-profit/5"
-              : "border-border bg-surface-1"
-          )}
-        >
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-text-primary">{TAKE_PROFIT_ALERT_TITLE}</h2>
-              <p className="mt-1 text-xs text-text-muted">
-                {triggeredPositions.length > 0
-                  ? `${triggeredPositions.length} \u4e2a\u6807\u7684\u5df2\u5230\u8fbe\u6b62\u76c8\u6761\u4ef6`
-                  : TAKE_PROFIT_ALERT_EMPTY}
-              </p>
-            </div>
-            {triggeredPositions.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {triggeredPositions.slice(0, 6).map((position) => (
-                  <span
-                    key={position.key}
-                    className="inline-flex rounded-full border border-profit/25 bg-profit/10 px-3 py-1 text-xs font-medium text-profit"
-                  >
-                    {position.ticker}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
 
         <Card className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -563,7 +439,7 @@ export function DcaView() {
               <h2 className="text-lg font-semibold text-text-primary">{EMPTY_TITLE}</h2>
               <p className="mt-2 text-sm text-text-muted">{EMPTY_TEXT}</p>
             </div>
-            <Button variant="primary" iconLeft={<Plus className="h-4 w-4" />} onClick={handleNew}>
+            <Button variant="primary" iconLeft={<Plus className="h-4 w-4" />} onClick={handleNewBuy}>
               {ADD_ENTRY_TEXT}
             </Button>
           </Card>
@@ -580,33 +456,27 @@ export function DcaView() {
                     <tr>
                       <th className="px-5 py-3 text-left font-medium">{POSITION_COL_TICKER}</th>
                       <th className="px-4 py-3 text-left font-medium">{POSITION_COL_CLASS}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_INVESTED}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_QUANTITY}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COST}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_QUANTITY}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_AVG_COST}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PRICE}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_TAKE_PROFIT}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_VALUE}</th>
-                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_PNL}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_FLOATING}</th>
+                      <th className="px-4 py-3 text-right font-medium">{POSITION_COL_REALISED}</th>
                       <th className="px-4 py-3 text-right font-medium">{POSITION_COL_COUNT}</th>
                       <th className="px-5 py-3 text-right font-medium">{POSITION_COL_LAST}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.length === 0 ? (
+                    {filteredActivePositions.length === 0 ? (
                       <tr>
                         <td colSpan={11} className="px-5 py-8 text-center text-sm text-text-muted">
                           {FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
-                      positions.map((position) => (
-                        <tr
-                          key={position.key}
-                          className={cn(
-                            "border-t border-border/70",
-                            position.takeProfitTriggered && "bg-profit/5"
-                          )}
-                        >
+                      filteredActivePositions.map((position) => (
+                        <tr key={position.key} className="border-t border-border/70">
                           <td className="px-5 py-4">
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
@@ -615,9 +485,16 @@ export function DcaView() {
                                   variant="secondary"
                                   size="xs"
                                   iconLeft={<Plus className="h-3.5 w-3.5" />}
-                                  onClick={() => handleRepeat(position.repeatEntry)}
+                                  onClick={() => handleRepeat(position.latestBuyEntry ?? position.latestEntry)}
                                 >
                                   {ACTION_REPEAT}
+                                </Button>
+                                <Button
+                                  variant="primary"
+                                  size="xs"
+                                  onClick={() => handleSell(position)}
+                                >
+                                  {ADD_SELL_TEXT}
                                 </Button>
                               </div>
                               {position.name && (
@@ -638,54 +515,18 @@ export function DcaView() {
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
-                            {formatCurrency(position.totalInvestedAmount, position.currency)}
+                            {formatCurrency(position.remainingCostBasis, position.currency)}
                           </td>
                           <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
-                            {formatQuantity(position.totalQuantity)}
+                            {formatQuantity(position.remainingQuantity)}
                           </td>
                           <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
                             {formatPrice(position.averageCost, position.currency)}
                           </td>
                           <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
                             {position.currentPrice != null
-                              ? formatPrice(position.currentPrice, position.currency)
+                              ? formatPrice(position.currentPrice, position.quoteCurrency ?? position.currency)
                               : NO_PRICE_TEXT}
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            {(() => {
-                              const takeProfitText = getTakeProfitText(
-                                position,
-                                position.currency,
-                                position.averageCost
-                              );
-
-                              return (
-                                <div>
-                                  <p
-                                    className={cn(
-                                      "font-medium tabular-nums",
-                                      position.takeProfitTriggered
-                                        ? "text-profit"
-                                        : "text-text-primary"
-                                    )}
-                                  >
-                                    {takeProfitText.summary}
-                                  </p>
-                                  <p
-                                    className={cn(
-                                      "mt-1 text-xs",
-                                      position.takeProfitTriggered
-                                        ? "text-profit"
-                                        : "text-text-muted"
-                                    )}
-                                  >
-                                    {position.takeProfitTriggered
-                                      ? TAKE_PROFIT_TRIGGERED_HINT
-                                      : takeProfitText.detail}
-                                  </p>
-                                </div>
-                              );
-                            })()}
                           </td>
                           <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
                             {formatCurrency(position.marketValue, position.currency)}
@@ -701,11 +542,22 @@ export function DcaView() {
                             {position.unrealizedPnl > 0 ? "+" : ""}
                             {formatCurrency(position.unrealizedPnl, position.currency)}
                           </td>
+                          <td
+                            className={cn(
+                              "px-4 py-4 text-right font-medium tabular-nums",
+                              position.realisedPnl > 0 && "text-profit",
+                              position.realisedPnl < 0 && "text-loss",
+                              position.realisedPnl === 0 && "text-text-secondary"
+                            )}
+                          >
+                            {position.realisedPnl > 0 ? "+" : ""}
+                            {formatCurrency(position.realisedPnl, position.currency)}
+                          </td>
                           <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
                             {position.entriesCount}
                           </td>
                           <td className="px-5 py-4 text-right text-text-secondary tabular-nums">
-                            {formatDate(position.lastInvestedAt)}
+                            {formatDate(position.latestActivityAt)}
                           </td>
                         </tr>
                       ))
@@ -725,12 +577,13 @@ export function DcaView() {
                   <thead className="bg-surface-2/70 text-xs uppercase tracking-wide text-text-muted">
                     <tr>
                       <th className="px-5 py-3 text-left font-medium">{RECORD_COL_DATE}</th>
+                      <th className="px-4 py-3 text-left font-medium">{RECORD_COL_SIDE}</th>
                       <th className="px-4 py-3 text-left font-medium">{RECORD_COL_ASSET}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_AMOUNT}</th>
-                      <th className="px-4 py-3 text-right font-medium">{RECORD_COL_BOUGHT}</th>
+                      <th className="px-4 py-3 text-right font-medium">{RECORD_COL_QUANTITY}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_PRICE}</th>
                       <th className="px-4 py-3 text-right font-medium">{RECORD_COL_LIVE_PRICE}</th>
-                      <th className="px-4 py-3 text-left font-medium">{RECORD_COL_TAKE_PROFIT}</th>
+                      <th className="px-4 py-3 text-right font-medium">{RECORD_COL_REALISED}</th>
                       <th className="px-4 py-3 text-left font-medium">{RECORD_COL_NOTE}</th>
                       <th className="px-5 py-3 text-right font-medium">{RECORD_COL_ACTION}</th>
                     </tr>
@@ -738,120 +591,20 @@ export function DcaView() {
                   <tbody>
                     {filteredEntries.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-5 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={10} className="px-5 py-8 text-center text-sm text-text-muted">
                           {RECORD_FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
-                      filteredEntries.map((entry) => {
-                        const averageCost = entry.investedAmount / entry.quantity;
-                        const takeProfit = getTakeProfitText(entry, entry.currency, averageCost);
-                        const takeProfitTriggered =
-                          entry.currentPrice != null &&
-                          takeProfit.targetPrice != null &&
-                          entry.currentPrice >= takeProfit.targetPrice;
-
-                        return (
-                          <tr
-                            key={entry.id}
-                            className={cn(
-                              "border-t border-border/70",
-                              takeProfitTriggered && "bg-profit/5"
-                            )}
-                          >
-                            <td className="px-5 py-4 text-text-secondary tabular-nums">
-                              {formatDate(entry.investedAt)}
-                            </td>
-                            <td className="px-4 py-4">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium text-text-primary">{entry.ticker}</span>
-                                  <span
-                                    className={cn(
-                                      "inline-flex rounded-full border px-2 py-0.5 text-2xs font-medium",
-                                      entry.assetClass === "stock"
-                                        ? "border-accent/20 bg-accent/10 text-accent"
-                                        : "border-profit/20 bg-profit/10 text-profit"
-                                    )}
-                                  >
-                                    {getAssetClassLabel(entry.assetClass)}
-                                  </span>
-                                </div>
-                                {entry.name && (
-                                  <p className="mt-1 text-xs text-text-muted">{entry.name}</p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
-                              {formatCurrency(entry.investedAmount, entry.currency)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
-                              {formatQuantity(entry.quantity)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
-                              {formatPrice(averageCost, entry.currency)}
-                            </td>
-                            <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
-                              {entry.currentPrice != null && entry.currentPrice > 0
-                                ? formatPrice(entry.currentPrice, entry.quoteCurrency ?? entry.currency)
-                                : NO_PRICE_TEXT}
-                            </td>
-                            <td className="max-w-[180px] px-4 py-4 text-sm">
-                              <p
-                                className={cn(
-                                  "font-medium",
-                                  takeProfitTriggered ? "text-profit" : "text-text-primary"
-                                )}
-                              >
-                                {takeProfit.summary}
-                              </p>
-                              <p
-                                className={cn(
-                                  "mt-1 text-xs",
-                                  takeProfitTriggered ? "text-profit" : "text-text-muted"
-                                )}
-                              >
-                                {takeProfitTriggered
-                                  ? TAKE_PROFIT_TRIGGERED
-                                  : takeProfit.summary === TAKE_PROFIT_NOT_SET
-                                    ? TAKE_PROFIT_NOT_SET_HINT
-                                    : takeProfit.detail}
-                              </p>
-                            </td>
-                            <td className="max-w-[220px] px-4 py-4 text-sm text-text-muted">
-                              <p className="line-clamp-2">{entry.notes ?? "--"}</p>
-                            </td>
-                            <td className="px-5 py-4">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="xs"
-                                  iconLeft={<Pencil className="h-3.5 w-3.5" />}
-                                  onClick={() => handleEdit(entry)}
-                                >
-                                  {ACTION_EDIT}
-                                </Button>
-                                <Button
-                                  variant="secondary"
-                                  size="xs"
-                                  iconLeft={<Plus className="h-3.5 w-3.5" />}
-                                  onClick={() => handleRepeat(entry)}
-                                >
-                                  {ACTION_REPEAT}
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  size="xs"
-                                  iconLeft={<Trash2 className="h-3.5 w-3.5" />}
-                                  onClick={() => setDeleteTarget(entry)}
-                                >
-                                  {ACTION_DELETE}
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
+                      filteredEntries.map((entry) => (
+                        <RecordRow
+                          key={entry.id}
+                          entry={entry}
+                          onEdit={() => handleEdit(entry)}
+                          onRepeat={entry.side === "sell" ? undefined : () => handleRepeat(entry)}
+                          onDelete={() => setDeleteTarget(entry)}
+                        />
+                      ))
                     )}
                   </tbody>
                 </table>
@@ -879,7 +632,7 @@ export function DcaView() {
           deleteTarget
             ? deleteError
               ? `\u5220\u9664\u5931\u8d25: ${deleteError}`
-              : `\u8fd9\u4f1a\u6c38\u4e45\u5220\u9664 ${deleteTarget.ticker} \u7684\u5b9a\u6295\u8bb0\u5f55\uff0c\u4e14\u65e0\u6cd5\u64a4\u9500\u3002`
+              : `\u8fd9\u4f1a\u6c38\u4e45\u5220\u9664 ${deleteTarget.ticker} \u7684${getSideLabel(deleteTarget)}\u8bb0\u5f55\uff0c\u4e14\u65e0\u6cd5\u64a4\u9500\u3002`
             : undefined
         }
         confirmLabel={DELETE_LABEL}
@@ -892,3 +645,124 @@ export function DcaView() {
     </>
   );
 }
+
+function RecordRow({
+  entry,
+  onEdit,
+  onRepeat,
+  onDelete,
+}: {
+  entry: DcaComputedEntry;
+  onEdit: () => void;
+  onRepeat?: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <tr className="border-t border-border/70">
+      <td className="px-5 py-4 text-text-secondary tabular-nums">
+        {formatDate(entry.investedAt)}
+      </td>
+      <td className="px-4 py-4">
+        <span
+          className={cn(
+            "inline-flex rounded-full border px-2 py-0.5 text-2xs font-medium",
+            entry.side === "sell"
+              ? "border-profit/20 bg-profit/10 text-profit"
+              : "border-accent/20 bg-accent/10 text-accent"
+          )}
+        >
+          {getSideLabel(entry)}
+        </span>
+      </td>
+      <td className="px-4 py-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-text-primary">{entry.ticker}</span>
+            <span
+              className={cn(
+                "inline-flex rounded-full border px-2 py-0.5 text-2xs font-medium",
+                entry.assetClass === "stock"
+                  ? "border-accent/20 bg-accent/10 text-accent"
+                  : "border-profit/20 bg-profit/10 text-profit"
+              )}
+            >
+              {getAssetClassLabel(entry.assetClass)}
+            </span>
+          </div>
+          {entry.name && <p className="mt-1 text-xs text-text-muted">{entry.name}</p>}
+        </div>
+      </td>
+      <td className="px-4 py-4 text-right font-medium text-text-primary tabular-nums">
+        {formatCurrency(entry.investedAmount, entry.currency)}
+      </td>
+      <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+        {formatQuantity(entry.quantity)}
+      </td>
+      <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+        {formatPrice(entry.averagePrice, entry.currency)}
+      </td>
+      <td className="px-4 py-4 text-right text-text-secondary tabular-nums">
+        {entry.currentPrice != null && entry.currentPrice > 0
+          ? formatPrice(entry.currentPrice, entry.quoteCurrency ?? entry.currency)
+          : NO_PRICE_TEXT}
+      </td>
+      <td
+        className={cn(
+          "px-4 py-4 text-right font-medium tabular-nums",
+          entry.side !== "sell" && "text-text-secondary",
+          (entry.realisedPnl ?? 0) > 0 && "text-profit",
+          (entry.realisedPnl ?? 0) < 0 && "text-loss"
+        )}
+      >
+        {entry.side === "sell" && entry.realisedPnl != null
+          ? `${entry.realisedPnl > 0 ? "+" : ""}${formatCurrency(entry.realisedPnl, entry.currency)}`
+          : "--"}
+      </td>
+      <td className="max-w-[220px] px-4 py-4 text-sm text-text-muted">
+        <p className="line-clamp-2">{entry.notes ?? "--"}</p>
+      </td>
+      <td className="px-5 py-4">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            iconLeft={<Pencil className="h-3.5 w-3.5" />}
+            onClick={onEdit}
+          >
+            {ACTION_EDIT}
+          </Button>
+          {onRepeat && (
+            <Button
+              variant="secondary"
+              size="xs"
+              iconLeft={<Plus className="h-3.5 w-3.5" />}
+              onClick={onRepeat}
+            >
+              {ACTION_REPEAT}
+            </Button>
+          )}
+          <Button
+            variant="danger"
+            size="xs"
+            iconLeft={<Trash2 className="h-3.5 w-3.5" />}
+            onClick={onDelete}
+          >
+            {ACTION_DELETE}
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+const EMPTY_DRAFT: DcaFormState = {
+  ticker: "",
+  name: "",
+  side: "buy",
+  assetClass: "stock",
+  currency: "USD",
+  investedAt: "",
+  investedAmount: "",
+  quantity: "",
+  notes: "",
+};
