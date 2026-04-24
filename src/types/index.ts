@@ -100,6 +100,8 @@ export interface PortfolioStats {
   closedTrades: number;
   openTrades: number;
   winRate: number;          // 0–100
+  winningTrades: number;
+  losingTrades: number;
   realisedNetPnl: number;
   unrealisedNetPnl: number;
   combinedNetPnl: number;

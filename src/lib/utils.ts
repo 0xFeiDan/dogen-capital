@@ -118,7 +118,7 @@ export function formatHoldingDuration(durationMs: number | null): string {
   const displayDays =
     totalDays >= 10 ? totalDays.toFixed(0) : totalDays.toFixed(1);
 
-  return `${displayDays} Day`;
+  return `${displayDays} 天`;
 }
 
 export function getPnlClass(value: number): string {

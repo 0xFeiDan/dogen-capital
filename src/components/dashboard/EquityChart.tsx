@@ -17,22 +17,31 @@ import type { EquityPoint } from "@/types";
 
 function useChartColors() {
   const [colors, setColors] = useState({
-    grid: "#2a2a2a",
-    tick: "#6b6b6b",
-    cursor: "#3a3a3a",
-    dotBg: "#111111",
+    grid: "#d6cab8",
+    tick: "#8e7e65",
+    cursor: "#c0b09a",
+    dotBg: "#fcf8f1",
+    profit: "#22965e",
+    loss: "#c3513a",
   });
 
   useEffect(() => {
     const root = document.documentElement;
     const style = getComputedStyle(root);
 
+    function readRgbVar(name: string, fallback: string) {
+      const value = style.getPropertyValue(name).trim();
+      return value ? `rgb(${value})` : fallback;
+    }
+
     function update() {
       setColors({
-        grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
-        tick: style.getPropertyValue("--chart-tick").trim() || "#6b6b6b",
-        cursor: style.getPropertyValue("--chart-cursor").trim() || "#3a3a3a",
-        dotBg: style.getPropertyValue("--chart-dot-bg").trim() || "#111111",
+        grid: style.getPropertyValue("--chart-grid").trim() || "#d6cab8",
+        tick: style.getPropertyValue("--chart-tick").trim() || "#8e7e65",
+        cursor: style.getPropertyValue("--chart-cursor").trim() || "#c0b09a",
+        dotBg: style.getPropertyValue("--chart-dot-bg").trim() || "#fcf8f1",
+        profit: readRgbVar("--profit", "#22965e"),
+        loss: readRgbVar("--loss", "#c3513a"),
       });
     }
 
@@ -103,19 +112,19 @@ export default function EquityChart() {
   const principalLine = data[0].nav - data[0].cumPnl;
   const lastPoint = data[data.length - 1];
   const gradientId = lastPoint.cumPnl >= 0 ? "equityGreen" : "equityRed";
-  const lineColor = lastPoint.cumPnl >= 0 ? "#22c55e" : "#ef4444";
+  const lineColor = lastPoint.cumPnl >= 0 ? chartColors.profit : chartColors.loss;
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="equityGreen" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.18} />
-            <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+            <stop offset="5%" stopColor={chartColors.profit} stopOpacity={0.18} />
+            <stop offset="95%" stopColor={chartColors.profit} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="equityRed" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.18} />
-            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+            <stop offset="5%" stopColor={chartColors.loss} stopOpacity={0.18} />
+            <stop offset="95%" stopColor={chartColors.loss} stopOpacity={0} />
           </linearGradient>
         </defs>
 

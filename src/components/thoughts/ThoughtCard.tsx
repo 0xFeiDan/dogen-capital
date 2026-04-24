@@ -6,11 +6,11 @@ import { cn, formatDate } from "@/lib/utils";
 import type { Thought, ThoughtCategory } from "@/types";
 
 export const CATEGORY_STYLES: Record<ThoughtCategory, string> = {
-  macro: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  sector: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  macro: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
+  sector: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20",
   stock: "bg-accent/10 text-accent border-accent/20",
-  strategy: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-  review: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  strategy: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/20",
+  review: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20",
   other: "bg-surface-3 text-text-muted border-border",
 };
 
@@ -49,7 +49,8 @@ export function ThoughtCard({
   onEdit,
   onDelete,
 }: ThoughtCardProps) {
-  const excerpt = stripMarkdown(thought.content).slice(0, 200);
+  const plainText = stripMarkdown(thought.content);
+  const excerpt = plainText.slice(0, 200);
   const visibleTags = thought.tags.slice(0, 3);
   const hiddenTagCount = thought.tags.length - visibleTags.length;
 
@@ -77,7 +78,7 @@ export function ThoughtCard({
         </div>
 
         <div
-          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          className="flex items-center gap-1 opacity-100 transition-opacity shrink-0 sm:opacity-0 sm:group-hover:opacity-100"
           onClick={(event) => event.stopPropagation()}
         >
           <button
@@ -104,7 +105,7 @@ export function ThoughtCard({
       {excerpt && (
         <p className="text-xs text-text-muted leading-relaxed line-clamp-3 flex-1">
           {excerpt}
-          {excerpt.length >= 200 && "..."}
+          {plainText.length > 200 && "..."}
         </p>
       )}
 

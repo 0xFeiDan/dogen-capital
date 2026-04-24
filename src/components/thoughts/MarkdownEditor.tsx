@@ -33,7 +33,7 @@ export function MarkdownEditor({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
-  }, [value, minHeight]);
+  }, [value, minHeight, mode]);
 
   // Tab key inserts two spaces
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

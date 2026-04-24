@@ -77,6 +77,15 @@ const components: Components = {
       {children}
     </a>
   ),
+  img: ({ src, alt }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src ?? ""}
+      alt={alt ?? ""}
+      className="my-3 h-auto max-w-full rounded-lg border border-border"
+      loading="lazy"
+    />
+  ),
   hr: () => <hr className="border-border my-5" />,
   table: ({ children }) => (
     <div className="overflow-x-auto mb-3">

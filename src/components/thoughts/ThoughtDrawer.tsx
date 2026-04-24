@@ -19,11 +19,11 @@ import {
 import type { ThoughtFormState } from "./ThoughtForm";
 
 const CATEGORY_STYLES: Record<ThoughtCategory, string> = {
-  macro: "border-blue-500/20 bg-blue-500/10 text-blue-400",
-  sector: "border-purple-500/20 bg-purple-500/10 text-purple-400",
+  macro: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+  sector: "border-purple-500/20 bg-purple-500/10 text-purple-700 dark:text-purple-400",
   stock: "border-accent/20 bg-accent/10 text-accent",
-  strategy: "border-cyan-500/20 bg-cyan-500/10 text-cyan-400",
-  review: "border-orange-500/20 bg-orange-500/10 text-orange-400",
+  strategy: "border-cyan-500/20 bg-cyan-500/10 text-cyan-700 dark:text-cyan-400",
+  review: "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:text-orange-400",
   other: "border-border bg-surface-3 text-text-muted",
 };
 
@@ -276,6 +276,7 @@ export function ThoughtDrawer({
               }}
               onCancel={onClose}
               submitLabel={submitting ? "提交中..." : isEditing ? "保存修改" : "创建笔记"}
+              className="min-h-0 flex-1"
             />
             </>
           ))}

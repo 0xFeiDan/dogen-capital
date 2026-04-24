@@ -266,7 +266,7 @@ function TradeRow({
       </td>
 
       <td className="whitespace-nowrap px-4 py-4 text-center">
-        <div className="flex items-center justify-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center justify-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           <button
             onClick={() => onEdit(trade)}
             className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-accent"

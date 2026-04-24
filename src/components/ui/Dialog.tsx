@@ -21,7 +21,7 @@ export function Dialog({
   onClose,
   title,
   description,
-  confirmLabel = "Confirm",
+  confirmLabel = "确认",
   confirmVariant = "danger",
   onConfirm,
   loading = false,
@@ -86,7 +86,7 @@ export function Dialog({
 
         <div className="flex items-center justify-end gap-2 mt-6">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
-            Cancel
+            取消
           </Button>
           <Button
             variant={confirmVariant}

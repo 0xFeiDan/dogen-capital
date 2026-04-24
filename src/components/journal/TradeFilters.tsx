@@ -165,8 +165,8 @@ export function TradeFilters({
             { value: "all", label: "全部持仓时长" },
             { value: "lt1h", label: "1小时内" },
             { value: "h1to24", label: "1 - 24小时" },
-            { value: "d1to3", label: "1 - 3 Day" },
-            { value: "d3to7", label: "3 - 7 Day" },
+            { value: "d1to3", label: "1 - 3 天" },
+            { value: "d3to7", label: "3 - 7 天" },
             { value: "gt7d", label: "7天以上" },
           ]}
           className="h-9 text-xs w-40"

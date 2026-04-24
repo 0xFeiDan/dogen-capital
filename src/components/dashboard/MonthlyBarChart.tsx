@@ -13,25 +13,34 @@ import {
   Cell,
 } from "recharts";
 import { useMonthlyPnl } from "@/store/selectors";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { MonthlyPnl } from "@/types";
 
 function useChartColors() {
   const [colors, setColors] = useState({
-    grid: "#2a2a2a",
-    tick: "#6b6b6b",
-    cursor: "#3a3a3a",
+    grid: "#d6cab8",
+    tick: "#8e7e65",
+    cursor: "#c0b09a",
+    profit: "#22965e",
+    loss: "#c3513a",
   });
 
   useEffect(() => {
     const root = document.documentElement;
     const style = getComputedStyle(root);
 
+    function readRgbVar(name: string, fallback: string) {
+      const value = style.getPropertyValue(name).trim();
+      return value ? `rgb(${value})` : fallback;
+    }
+
     function update() {
       setColors({
-        grid: style.getPropertyValue("--chart-grid").trim() || "#2a2a2a",
-        tick: style.getPropertyValue("--chart-tick").trim() || "#6b6b6b",
-        cursor: style.getPropertyValue("--chart-cursor").trim() || "#3a3a3a",
+        grid: style.getPropertyValue("--chart-grid").trim() || "#d6cab8",
+        tick: style.getPropertyValue("--chart-tick").trim() || "#8e7e65",
+        cursor: style.getPropertyValue("--chart-cursor").trim() || "#c0b09a",
+        profit: readRgbVar("--profit", "#22965e"),
+        loss: readRgbVar("--loss", "#c3513a"),
       });
     }
 
@@ -78,10 +87,6 @@ function ChartTooltip({
 function formatYAxis(v: number): string {
   if (Math.abs(v) >= 1000) return `$${(v / 1000).toFixed(0)}k`;
   return `$${v}`;
-}
-
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }
 
 export default function MonthlyBarChart() {
@@ -131,7 +136,7 @@ export default function MonthlyBarChart() {
           {data.map((entry, i) => (
             <Cell
               key={i}
-              fill={entry.pnl >= 0 ? "#22c55e" : "#ef4444"}
+              fill={entry.pnl >= 0 ? chartColors.profit : chartColors.loss}
               fillOpacity={0.85}
             />
           ))}

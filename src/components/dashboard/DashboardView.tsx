@@ -212,7 +212,7 @@ export function DashboardView() {
           sub={`${stats.closedTrades} \u7b14\u5df2\u5e73\u4ed3`}
           trend={
             stats.closedTrades > 0
-              ? `${stats.closedTrades - Math.round(stats.closedTrades * (stats.winRate / 100))} \u7b14\u4e8f\u635f`
+              ? `${stats.losingTrades} \u7b14\u4e8f\u635f`
               : undefined
           }
           trendSign="neutral"

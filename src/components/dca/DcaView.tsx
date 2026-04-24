@@ -332,6 +332,8 @@ export function DcaView() {
   }
 
   function handleRepeat(entry: DcaEntry) {
+    if (entry.side === "sell") return;
+
     const nextValues = dcaToForm(entry);
     setEditingEntry(null);
     setDraftValues({

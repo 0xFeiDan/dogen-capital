@@ -80,7 +80,10 @@ export function LoginForm() {
           type="password"
           label="访问密码"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            if (error) setError("");
+          }}
           placeholder="请输入密码"
           autoComplete="current-password"
           iconLeft={<LockKeyhole className="h-4 w-4" />}

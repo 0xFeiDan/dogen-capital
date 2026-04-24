@@ -93,6 +93,7 @@ interface ThoughtFormProps {
   onSubmit: (data: ThoughtFormState) => void;
   onCancel: () => void;
   submitLabel?: string;
+  className?: string;
 }
 
 export function ThoughtForm({
@@ -100,6 +101,7 @@ export function ThoughtForm({
   onSubmit,
   onCancel,
   submitLabel = "保存笔记",
+  className,
 }: ThoughtFormProps) {
   const [form, setForm] = useState<ThoughtFormState>(initialValues);
   const [errors, setErrors] = useState<ThoughtFormErrors>({});
@@ -127,8 +129,8 @@ export function ThoughtForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+    <form onSubmit={handleSubmit} className={cn("flex h-full flex-col", className)}>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 space-y-4">
         <Input
           label="标题 *"
           value={form.title}

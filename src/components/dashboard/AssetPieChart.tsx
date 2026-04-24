@@ -19,7 +19,6 @@ const SLICE_COLORS: Record<string, string> = {
   futures: "#7c83fd",
   option: "#ef5da8",
   other: "#94a3b8",
-  cash: "#6e8b74",
 };
 
 function ChartTooltip({

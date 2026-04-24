@@ -142,6 +142,8 @@ export function computePortfolioStats(
     closedTrades: closed.length,
     openTrades: open.length,
     winRate: pnls.length > 0 ? (wins.length / pnls.length) * 100 : 0,
+    winningTrades: wins.length,
+    losingTrades: losses.length,
     realisedNetPnl,
     unrealisedNetPnl,
     combinedNetPnl,
