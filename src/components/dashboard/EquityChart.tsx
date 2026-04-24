@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceLine,
 } from "recharts";
 import { useEquityCurve } from "@/store/selectors";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -21,6 +20,7 @@ function useChartColors() {
     tick: "#8e7e65",
     cursor: "#c0b09a",
     dotBg: "#fcf8f1",
+    accent: "#bf884a",
     profit: "#22965e",
     loss: "#c3513a",
   });
@@ -40,6 +40,7 @@ function useChartColors() {
         tick: style.getPropertyValue("--chart-tick").trim() || "#8e7e65",
         cursor: style.getPropertyValue("--chart-cursor").trim() || "#c0b09a",
         dotBg: style.getPropertyValue("--chart-dot-bg").trim() || "#fcf8f1",
+        accent: readRgbVar("--accent", "#bf884a"),
         profit: readRgbVar("--profit", "#22965e"),
         loss: readRgbVar("--loss", "#c3513a"),
       });
@@ -74,13 +75,13 @@ function ChartTooltip({
         {formatCurrency(d.nav)}
       </p>
       <p className="mt-0.5 text-text-muted">
-        \u7d2f\u8ba1\u5df2\u5b9e\u73b0{" "}
+        累计已实现{" "}
         <span className={isPositive ? "text-profit" : "text-loss"}>
           {isPositive ? "+" : ""}
           {formatCurrency(d.cumPnl)}
         </span>
       </p>
-      <p className="mt-0.5 text-text-muted">{d.trades} \u6761\u5df2\u5b9e\u73b0\u8bb0\u5f55</p>
+      <p className="mt-0.5 text-text-muted">{d.trades} 条已实现记录</p>
     </div>
   );
 }
@@ -104,27 +105,20 @@ export default function EquityChart() {
   if (data.length === 0) {
     return (
       <div className="flex h-52 items-center justify-center text-sm text-text-muted">
-        \u6682\u65e0\u5df2\u5b9e\u73b0\u76c8\u4e8f\u8bb0\u5f55
+        暂无已实现盈亏记录
       </div>
     );
   }
 
-  const principalLine = data[0].nav - data[0].cumPnl;
-  const lastPoint = data[data.length - 1];
-  const gradientId = lastPoint.cumPnl >= 0 ? "equityGreen" : "equityRed";
-  const lineColor = lastPoint.cumPnl >= 0 ? chartColors.profit : chartColors.loss;
+  const lineColor = chartColors.accent;
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <defs>
-          <linearGradient id="equityGreen" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={chartColors.profit} stopOpacity={0.18} />
-            <stop offset="95%" stopColor={chartColors.profit} stopOpacity={0} />
-          </linearGradient>
-          <linearGradient id="equityRed" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={chartColors.loss} stopOpacity={0.18} />
-            <stop offset="95%" stopColor={chartColors.loss} stopOpacity={0} />
+          <linearGradient id="equityNeutral" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={chartColors.accent} stopOpacity={0.08} />
+            <stop offset="95%" stopColor={chartColors.accent} stopOpacity={0} />
           </linearGradient>
         </defs>
 
@@ -151,13 +145,6 @@ export default function EquityChart() {
           width={48}
         />
 
-        <ReferenceLine
-          y={principalLine}
-          stroke={chartColors.cursor}
-          strokeDasharray="4 2"
-          strokeWidth={1}
-        />
-
         <Tooltip
           content={<ChartTooltip />}
           cursor={{ stroke: chartColors.cursor, strokeWidth: 1 }}
@@ -167,8 +154,8 @@ export default function EquityChart() {
           type="monotone"
           dataKey="nav"
           stroke={lineColor}
-          strokeWidth={1.5}
-          fill={`url(#${gradientId})`}
+          strokeWidth={1.2}
+          fill="url(#equityNeutral)"
           dot={false}
           activeDot={{
             r: 4,

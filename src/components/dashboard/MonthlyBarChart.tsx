@@ -79,7 +79,7 @@ function ChartTooltip({
         {isPositive ? "+" : ""}
         {formatCurrency(d.pnl)}
       </p>
-      <p className="mt-0.5 text-text-muted">{d.trades} \u6761\u5df2\u5b9e\u73b0\u8bb0\u5f55</p>
+      <p className="mt-0.5 text-text-muted">{d.trades} 条已实现记录</p>
     </div>
   );
 }
@@ -96,7 +96,7 @@ export default function MonthlyBarChart() {
   if (data.length === 0) {
     return (
       <div className="flex h-52 items-center justify-center text-sm text-text-muted">
-        \u6682\u65e0\u5df2\u5b9e\u73b0\u76c8\u4e8f\u8bb0\u5f55
+        暂无已实现盈亏记录
       </div>
     );
   }
