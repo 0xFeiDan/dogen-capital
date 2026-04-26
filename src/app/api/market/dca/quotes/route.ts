@@ -23,6 +23,21 @@ interface BinanceBookTickerPayload {
   askQty: string;
 }
 
+interface BitgetTickerPayload {
+  symbol: string;
+  lastPr?: string;
+  askPr?: string;
+  bidPr?: string;
+  ts?: string;
+}
+
+interface BitgetTickersResponse {
+  code?: string;
+  msg?: string;
+  requestTime?: number;
+  data?: BitgetTickerPayload[];
+}
+
 interface TwelveDataQuotePayload {
   symbol?: string;
   currency?: string;
@@ -37,6 +52,8 @@ interface TwelveDataQuotePayload {
 }
 
 const TWELVE_DATA_API_URL = "https://api.twelvedata.com/quote";
+const BINANCE_BOOK_TICKER_URL = "https://api.binance.com/api/v3/ticker/bookTicker";
+const BITGET_SPOT_TICKERS_URL = "https://api.bitget.com/api/v2/spot/market/tickers";
 const TWELVE_DATA_CACHE_MS =
   Math.max(15, Number(process.env.TWELVEDATA_CACHE_SECONDS ?? 60)) * 1000;
 const stockQuoteCache = new Map<
@@ -60,8 +77,19 @@ function sanitizeStockSymbols(symbols?: string[]): string[] {
   return sanitizeSymbols(symbols, /[^A-Z0-9.^=-]/g);
 }
 
+function parsePositivePrice(...values: Array<string | number | null | undefined>): number {
+  for (const value of values) {
+    const price = Number(value);
+    if (Number.isFinite(price) && price > 0) {
+      return price;
+    }
+  }
+
+  return Number.NaN;
+}
+
 function parseBinanceQuote(payload: BinanceBookTickerPayload): DcaMarketQuote | null {
-  const price = Number(payload.bidPrice);
+  const price = parsePositivePrice(payload.bidPrice, payload.askPrice);
 
   if (!Number.isFinite(price) || price <= 0) {
     return null;
@@ -77,29 +105,40 @@ function parseBinanceQuote(payload: BinanceBookTickerPayload): DcaMarketQuote | 
   };
 }
 
-function parseTwelveDataPrice(payload: TwelveDataQuotePayload): number {
-  const candidates = [
-    payload.extended_price,
-    payload.close,
-    payload.previous_close,
-  ];
+function parseBitgetQuote(payload: BitgetTickerPayload): DcaMarketQuote | null {
+  const price = parsePositivePrice(payload.lastPr, payload.bidPr, payload.askPr);
+  const symbol = payload.symbol?.trim().toUpperCase();
 
-  for (const candidate of candidates) {
-    const price = Number(candidate);
-    if (Number.isFinite(price) && price > 0) {
-      return price;
-    }
+  if (!symbol || !Number.isFinite(price) || price <= 0) {
+    return null;
   }
 
-  return Number.NaN;
+  return {
+    assetClass: "crypto",
+    symbol,
+    price,
+    currency: getCryptoQuoteCurrency(symbol, "USD"),
+    source: "bitget",
+    fetchedAt: payload.ts
+      ? new Date(Number(payload.ts)).toISOString()
+      : new Date().toISOString(),
+  };
 }
 
-async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
+function parseTwelveDataPrice(payload: TwelveDataQuotePayload): number {
+  return parsePositivePrice(
+    payload.extended_price,
+    payload.close,
+    payload.previous_close
+  );
+}
+
+async function fetchBinanceCryptoQuotesBatch(symbols: string[]): Promise<DcaMarketQuote[]> {
   if (symbols.length === 0) return [];
 
   const symbolsParam = JSON.stringify(symbols);
   const response = await fetch(
-    `https://api.binance.com/api/v3/ticker/bookTicker?symbols=${encodeURIComponent(symbolsParam)}`,
+    `${BINANCE_BOOK_TICKER_URL}?symbols=${encodeURIComponent(symbolsParam)}`,
     { cache: "no-store" }
   );
 
@@ -111,6 +150,70 @@ async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
   return payloads
     .map(parseBinanceQuote)
     .filter((quote): quote is DcaMarketQuote => quote != null);
+}
+
+async function fetchBinanceCryptoQuote(symbol: string): Promise<DcaMarketQuote | null> {
+  const response = await fetch(
+    `${BINANCE_BOOK_TICKER_URL}?symbol=${encodeURIComponent(symbol)}`,
+    { cache: "no-store" }
+  );
+
+  if (!response.ok) return null;
+
+  const payload = (await response.json()) as BinanceBookTickerPayload;
+  return parseBinanceQuote(payload);
+}
+
+async function fetchBinanceCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
+  const batchQuotes = await fetchBinanceCryptoQuotesBatch(symbols);
+  if (batchQuotes.length > 0) {
+    return batchQuotes;
+  }
+
+  const quotes = await Promise.all(symbols.map((symbol) => fetchBinanceCryptoQuote(symbol)));
+  return quotes.filter((quote): quote is DcaMarketQuote => quote != null);
+}
+
+async function fetchBitgetCryptoQuote(symbol: string): Promise<DcaMarketQuote | null> {
+  const response = await fetch(
+    `${BITGET_SPOT_TICKERS_URL}?symbol=${encodeURIComponent(symbol)}`,
+    { cache: "no-store" }
+  );
+
+  if (!response.ok) return null;
+
+  const payload = (await response.json()) as BitgetTickersResponse;
+  if (payload.code !== "00000" || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  const normalizedSymbol = symbol.toUpperCase();
+  const ticker =
+    payload.data.find((item) => item.symbol?.toUpperCase() === normalizedSymbol) ??
+    payload.data[0];
+
+  return ticker ? parseBitgetQuote(ticker) : null;
+}
+
+async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
+  if (symbols.length === 0) return [];
+
+  const binanceQuotes = await fetchBinanceCryptoQuotes(symbols);
+  const binanceSymbols = new Set(binanceQuotes.map((quote) => quote.symbol.toUpperCase()));
+  const missingSymbols = symbols.filter((symbol) => !binanceSymbols.has(symbol.toUpperCase()));
+
+  if (missingSymbols.length === 0) {
+    return binanceQuotes;
+  }
+
+  const bitgetQuotes = await Promise.all(
+    missingSymbols.map((symbol) => fetchBitgetCryptoQuote(symbol))
+  );
+
+  return [
+    ...binanceQuotes,
+    ...bitgetQuotes.filter((quote): quote is DcaMarketQuote => quote != null),
+  ];
 }
 
 async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
