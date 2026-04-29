@@ -20,6 +20,7 @@ import { useAppUsers } from "@/store/useAppUsers";
 import { usePortfolioStats } from "@/store/selectors";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { StatCard } from "./StatCard";
+import { TreasuryMnavCards } from "./TreasuryMnavCards";
 
 const EquityChart = dynamic(() => import("./EquityChart"), {
   ssr: false,
@@ -231,6 +232,8 @@ export function DashboardView() {
           iconColor="text-text-secondary"
         />
       </div>
+
+      <TreasuryMnavCards />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card noPadding className="lg:col-span-2">

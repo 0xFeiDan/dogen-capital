@@ -15,6 +15,7 @@ model Profile {
   trades   TradeRecord[]
   thoughts ThoughtRecord[]
   dcaEntries DcaRecord[]
+  dcaSyncSettings DcaSyncSetting[]
   setting  PortfolioSetting?
 }
 
@@ -81,12 +82,17 @@ model DcaRecord {
   quoteSymbol    String?
   quoteCurrency  String?
   priceUpdatedAt String?
+  source         String?
+  sourceAddress  String?
+  externalId     String?
+  sourceUpdatedAt String?
   notes          String?
   createdAt      String
   updatedAt      String
   profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([profileId, assetClass])
+  @@index([profileId, source, sourceAddress])
   @@index([profileId, updatedAt])
 }
 
@@ -96,4 +102,16 @@ model PortfolioSetting {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model DcaSyncSetting {
+  profileId    String
+  provider     String
+  address      String
+  lastSyncedAt String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, provider])
 }

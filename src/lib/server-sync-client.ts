@@ -15,7 +15,7 @@ import { useDcaEntries } from "@/store/useDcaEntries";
 import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
-import type { DcaEntry, Thought, Trade } from "@/types";
+import type { DcaEntry, DcaSyncSetting, Thought, Trade } from "@/types";
 
 const DEFAULT_INITIAL_CAPITAL = 100000;
 
@@ -327,6 +327,48 @@ export async function updateDcaLivePricesOnServer(
   });
 
   await parseJsonResponse<{ ok: true; count: number }>(response);
+}
+
+export async function fetchHyperliquidDcaSyncSetting(
+  profileId: AppUserId
+): Promise<DcaSyncSetting | null> {
+  const response = await fetch(`/api/data/dca/hyperliquid?profileId=${profileId}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+
+  const data = await parseJsonResponse<{ setting: DcaSyncSetting | null }>(response);
+  return data.setting;
+}
+
+export async function syncHyperliquidDcaEntriesOnServer(params: {
+  profileId: AppUserId;
+  address: string;
+  previousAddressToRemove?: string;
+}): Promise<{
+  entries: DcaEntry[];
+  setting: DcaSyncSetting;
+  importedCount: number;
+  deletedCount: number;
+  sourceUrl: string;
+}> {
+  const response = await fetch("/api/data/dca/hyperliquid", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  return parseJsonResponse<{
+    entries: DcaEntry[];
+    setting: DcaSyncSetting;
+    importedCount: number;
+    deletedCount: number;
+    sourceUrl: string;
+  }>(response);
 }
 
 export async function importItemsToServer(params: {

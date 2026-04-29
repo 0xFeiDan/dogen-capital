@@ -1,4 +1,4 @@
-import type { DcaEntry, Thought, Trade } from "@/types";
+import type { DcaEntry, DcaSyncSetting, Thought, Trade } from "@/types";
 import { db } from "@/lib/db";
 import { getDcaEntrySide } from "@/lib/dca";
 import { normalizeTrade } from "@/lib/pricing";
@@ -83,6 +83,10 @@ async function ensureDatabaseSchema() {
       "quoteSymbol" TEXT,
       "quoteCurrency" TEXT,
       "priceUpdatedAt" TEXT,
+      "source" TEXT,
+      "sourceAddress" TEXT,
+      "externalId" TEXT,
+      "sourceUpdatedAt" TEXT,
       "notes" TEXT,
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
@@ -99,6 +103,21 @@ async function ensureDatabaseSchema() {
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "PortfolioSetting_profileId_fkey"
+        FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "DcaSyncSetting" (
+      "profileId" TEXT NOT NULL,
+      "provider" TEXT NOT NULL,
+      "address" TEXT NOT NULL,
+      "lastSyncedAt" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY ("profileId", "provider"),
+      CONSTRAINT "DcaSyncSetting_profileId_fkey"
         FOREIGN KEY ("profileId") REFERENCES "Profile" ("id")
         ON DELETE CASCADE ON UPDATE CASCADE
     )
@@ -137,6 +156,11 @@ async function ensureDatabaseSchema() {
   await db.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "DcaRecord_profileId_updatedAt_idx"
     ON "DcaRecord" ("profileId", "updatedAt")
+  `);
+
+  await db.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "DcaRecord_profileId_source_sourceAddress_idx"
+    ON "DcaRecord" ("profileId", "source", "sourceAddress")
   `);
 
   const tradeColumns = await db.$queryRawUnsafe<Array<{ name: string }>>(
@@ -196,6 +220,30 @@ async function ensureDatabaseSchema() {
       `ALTER TABLE "DcaRecord" ADD COLUMN "priceUpdatedAt" TEXT`
     );
   }
+
+  if (!dcaColumnNames.has("source")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "source" TEXT`
+    );
+  }
+
+  if (!dcaColumnNames.has("sourceAddress")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "sourceAddress" TEXT`
+    );
+  }
+
+  if (!dcaColumnNames.has("externalId")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "externalId" TEXT`
+    );
+  }
+
+  if (!dcaColumnNames.has("sourceUpdatedAt")) {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "DcaRecord" ADD COLUMN "sourceUpdatedAt" TEXT`
+    );
+  }
 }
 
 async function ensureProfiles() {
@@ -233,6 +281,7 @@ export type TradesByUser = Record<AppUserId, Trade[]>;
 export type ThoughtsByUser = Record<AppUserId, Thought[]>;
 export type DcaByUser = Record<AppUserId, DcaEntry[]>;
 export type SettingsByUser = Record<AppUserId, { initialCapital: number }>;
+export type DcaSyncProvider = DcaSyncSetting["provider"];
 
 export interface ServerSnapshot {
   profiles: AppUserProfile[];
@@ -324,6 +373,18 @@ function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
   }
 
   return Array.from(merged.values());
+}
+
+function toDcaSyncSetting(record: {
+  provider: string;
+  address: string;
+  lastSyncedAt: string | null;
+}): DcaSyncSetting {
+  return {
+    provider: record.provider === "hyperliquid" ? "hyperliquid" : "hyperliquid",
+    address: record.address,
+    lastSyncedAt: record.lastSyncedAt ?? undefined,
+  };
 }
 
 export async function ensureServerSetup() {
@@ -443,6 +504,10 @@ function toDcaEntry(record: {
   quoteSymbol: string | null;
   quoteCurrency: string | null;
   priceUpdatedAt: string | null;
+  source: string | null;
+  sourceAddress: string | null;
+  externalId: string | null;
+  sourceUpdatedAt: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -467,9 +532,39 @@ function toDcaEntry(record: {
       ? (record.quoteCurrency as DcaEntry["quoteCurrency"])
       : undefined,
     priceUpdatedAt: record.priceUpdatedAt ?? undefined,
+    source: record.source === "hyperliquid" ? "hyperliquid" : undefined,
+    sourceAddress: record.sourceAddress ?? undefined,
+    externalId: record.externalId ?? undefined,
+    sourceUpdatedAt: record.sourceUpdatedAt ?? undefined,
     notes: record.notes ?? undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+  };
+}
+
+function toDcaRecordData(profileId: AppUserId, entry: DcaEntry) {
+  return {
+    id: toScopedId(profileId, entry.id),
+    profileId,
+    ticker: entry.ticker,
+    name: entry.name ?? null,
+    side: getDcaEntrySide(entry),
+    assetClass: entry.assetClass,
+    currency: entry.currency,
+    investedAt: entry.investedAt,
+    investedAmount: entry.investedAmount,
+    quantity: entry.quantity,
+    currentPrice: entry.currentPrice ?? null,
+    quoteSymbol: entry.quoteSymbol ?? null,
+    quoteCurrency: entry.quoteCurrency ?? null,
+    priceUpdatedAt: entry.priceUpdatedAt ?? null,
+    source: entry.source ?? null,
+    sourceAddress: entry.sourceAddress ?? null,
+    externalId: entry.externalId ?? null,
+    sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
+    notes: entry.notes ?? null,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -687,23 +782,8 @@ export async function upsertDcaEntry(
   });
 
   const payload = {
+    ...toDcaRecordData(profileId, entry),
     id: scopedId,
-    profileId,
-    ticker: entry.ticker,
-    name: entry.name ?? null,
-    side: getDcaEntrySide(entry),
-    assetClass: entry.assetClass,
-    currency: entry.currency,
-    investedAt: entry.investedAt,
-    investedAmount: entry.investedAmount,
-    quantity: entry.quantity,
-    currentPrice: entry.currentPrice ?? null,
-    quoteSymbol: entry.quoteSymbol ?? null,
-    quoteCurrency: entry.quoteCurrency ?? null,
-    priceUpdatedAt: entry.priceUpdatedAt ?? null,
-    notes: entry.notes ?? null,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
   };
 
   const record = existing
@@ -884,6 +964,135 @@ export async function updateDcaCurrentPrices(
   });
 }
 
+export async function getDcaEntriesForProfile(profileId: AppUserId): Promise<DcaEntry[]> {
+  await ensureServerSetup();
+
+  const entries = await db.dcaRecord.findMany({
+    where: { profileId },
+    orderBy: [{ updatedAt: "desc" }],
+  });
+
+  return entries.map(toDcaEntry);
+}
+
+export async function getDcaSyncSetting(
+  profileId: AppUserId,
+  provider: DcaSyncProvider = "hyperliquid"
+): Promise<DcaSyncSetting | null> {
+  await ensureServerSetup();
+
+  const setting = await db.dcaSyncSetting.findUnique({
+    where: {
+      profileId_provider: {
+        profileId,
+        provider,
+      },
+    },
+  });
+
+  return setting ? toDcaSyncSetting(setting) : null;
+}
+
+export async function replaceAutoDcaEntriesForAddress(params: {
+  profileId: AppUserId;
+  provider?: DcaSyncProvider;
+  address: string;
+  previousAddressToRemove?: string;
+  entries: DcaEntry[];
+}): Promise<{
+  entries: DcaEntry[];
+  setting: DcaSyncSetting;
+  importedCount: number;
+  deletedCount: number;
+}> {
+  await ensureServerSetup();
+
+  const provider = params.provider ?? "hyperliquid";
+  const sourceAddress = params.address.toLowerCase();
+  const previousAddressToRemove = params.previousAddressToRemove?.toLowerCase();
+  const deleteAddresses = Array.from(
+    new Set(
+      [sourceAddress, previousAddressToRemove].filter(
+        (address): address is string => Boolean(address)
+      )
+    )
+  );
+  const now = new Date().toISOString();
+  const uniqueEntries = Array.from(
+    new Map(params.entries.map((entry) => [entry.id, entry] as const)).values()
+  );
+
+  return db.$transaction(async (tx) => {
+    if (uniqueEntries.length === 0) {
+      const existingAutoEntriesToDelete = await tx.dcaRecord.count({
+        where: {
+          profileId: params.profileId,
+          source: provider,
+          sourceAddress: { in: deleteAddresses },
+        },
+      });
+
+      if (existingAutoEntriesToDelete > 0) {
+        throw new Error(
+          "Hyperliquid returned 0 DCA entries; kept existing automatic records to avoid accidental deletion"
+        );
+      }
+    }
+
+    const deleted = await tx.dcaRecord.deleteMany({
+      where: {
+        profileId: params.profileId,
+        source: provider,
+        sourceAddress: { in: deleteAddresses },
+      },
+    });
+
+    if (uniqueEntries.length > 0) {
+      await tx.dcaRecord.createMany({
+        data: uniqueEntries.map((entry) =>
+          toDcaRecordData(params.profileId, {
+            ...entry,
+            source: provider,
+            sourceAddress,
+            sourceUpdatedAt: entry.sourceUpdatedAt ?? now,
+          })
+        ),
+      });
+    }
+
+    const settingRecord = await tx.dcaSyncSetting.upsert({
+      where: {
+        profileId_provider: {
+          profileId: params.profileId,
+          provider,
+        },
+      },
+      update: {
+        address: sourceAddress,
+        lastSyncedAt: now,
+      },
+      create: {
+        profileId: params.profileId,
+        provider,
+        address: sourceAddress,
+        lastSyncedAt: now,
+      },
+    });
+
+    const allEntries = await tx.dcaRecord.findMany({
+      where: { profileId: params.profileId },
+      orderBy: [{ updatedAt: "desc" }],
+    });
+
+    return {
+      entries: allEntries.map(toDcaEntry),
+      setting: toDcaSyncSetting(settingRecord),
+      importedCount: uniqueEntries.length,
+      deletedCount: deleted.count,
+    };
+  });
+}
+
 async function replaceProfileTrades(profileId: AppUserId, trades: Trade[]) {
   await db.$transaction(async (tx) => {
     await tx.tradeRecord.deleteMany({ where: { profileId } });
@@ -952,26 +1161,8 @@ async function replaceProfileDcaEntries(profileId: AppUserId, entries: DcaEntry[
     await tx.dcaRecord.deleteMany({ where: { profileId } });
 
     if (entries.length > 0) {
-        await tx.dcaRecord.createMany({
-          data: entries.map((entry) => ({
-            id: toScopedId(profileId, entry.id),
-            profileId,
-            ticker: entry.ticker,
-            name: entry.name ?? null,
-            side: getDcaEntrySide(entry),
-            assetClass: entry.assetClass,
-          currency: entry.currency,
-          investedAt: entry.investedAt,
-          investedAmount: entry.investedAmount,
-          quantity: entry.quantity,
-          currentPrice: entry.currentPrice ?? null,
-          quoteSymbol: entry.quoteSymbol ?? null,
-          quoteCurrency: entry.quoteCurrency ?? null,
-          priceUpdatedAt: entry.priceUpdatedAt ?? null,
-          notes: entry.notes ?? null,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
-        })),
+      await tx.dcaRecord.createMany({
+        data: entries.map((entry) => toDcaRecordData(profileId, entry)),
       });
     }
   });

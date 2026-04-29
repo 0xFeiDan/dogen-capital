@@ -15,6 +15,7 @@ export type AssetClass =
   | "option"
   | "other";
 export type Currency = "USD" | "HKD" | "CNY" | "EUR" | "GBP" | "JPY" | "BTC" | "ETH";
+export type DcaEntrySource = "hyperliquid";
 export type ThoughtCategory =
   | "macro"
   | "sector"
@@ -86,9 +87,19 @@ export interface DcaEntry {
   quoteSymbol?: string;
   quoteCurrency?: Currency;
   priceUpdatedAt?: string;
+  source?: DcaEntrySource;
+  sourceAddress?: string;
+  externalId?: string;
+  sourceUpdatedAt?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DcaSyncSetting {
+  provider: DcaEntrySource;
+  address: string;
+  lastSyncedAt?: string;
 }
 
 export type DcaValuationStatus = "ready" | "missing-price" | "currency-mismatch";

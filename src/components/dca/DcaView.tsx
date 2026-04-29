@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { buildDcaPositionSummaries, type DcaComputedEntry, type DcaPositionSummary } from "@/lib/dca";
-import { deleteDcaEntryFromServer } from "@/lib/server-sync-client";
+import {
+  deleteDcaEntryFromServer,
+  fetchHyperliquidDcaSyncSetting,
+  syncHyperliquidDcaEntriesOnServer,
+} from "@/lib/server-sync-client";
 import { cn, formatCurrency, formatDate, formatPrice } from "@/lib/utils";
 import { useAppUsers } from "@/store/useAppUsers";
 import { useDcaEntries } from "@/store/useDcaEntries";
@@ -76,6 +80,19 @@ const ACTION_REPEAT = "\u518d\u6295";
 const ACTION_DELETE = "\u5220\u9664";
 const SIDE_BUY = "\u4e70\u5165";
 const SIDE_SELL = "\u5356\u51fa";
+const HYPERLIQUID_SYNC_TITLE = "Hyperliquid 现货同步";
+const HYPERLIQUID_SYNC_ADDRESS_LABEL = "钱包地址";
+const HYPERLIQUID_SYNC_PLACEHOLDER = "0x...";
+const HYPERLIQUID_SYNC_BUTTON = "保存并同步";
+const HYPERLIQUID_SYNC_LOADING = "同步中...";
+const HYPERLIQUID_SYNC_BOUND = "已绑定";
+const HYPERLIQUID_SYNC_NEVER = "尚未同步";
+const HYPERLIQUID_SYNC_LAST = "上次同步";
+const HYPERLIQUID_SYNC_CLEAR_OLD = "清理旧地址自动记录";
+const HYPERLIQUID_SYNC_INVALID = "请输入有效的 0x 钱包地址";
+const HYPERLIQUID_SYNC_DONE = "同步完成";
+const HYPERLIQUID_SYNC_IMPORTED = "导入";
+const HYPERLIQUID_SYNC_REPLACED = "替换";
 
 function todayInputDate() {
   const now = new Date();
@@ -199,6 +216,7 @@ export function DcaView() {
   const activeUserId = useAppUsers((state) => state.activeUserId);
   const entries = useDcaEntries((state) => state.entries);
   const removeEntry = useDcaEntries((state) => state.deleteEntry);
+  const replaceDcaEntriesByUser = useDcaEntries((state) => state.replaceAllDcaEntriesByUser);
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all");
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -207,6 +225,14 @@ export function DcaView() {
   const [deleteTarget, setDeleteTarget] = useState<DcaEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [hyperliquidAddress, setHyperliquidAddress] = useState("");
+  const [boundHyperliquidAddress, setBoundHyperliquidAddress] = useState("");
+  const [hyperliquidLastSyncedAt, setHyperliquidLastSyncedAt] = useState("");
+  const [clearOldHyperliquidRecords, setClearOldHyperliquidRecords] = useState(false);
+  const [hyperliquidSyncing, setHyperliquidSyncing] = useState(false);
+  const [hyperliquidSyncLoading, setHyperliquidSyncLoading] = useState(false);
+  const [hyperliquidSyncError, setHyperliquidSyncError] = useState("");
+  const [hyperliquidSyncMessage, setHyperliquidSyncMessage] = useState("");
 
   const normalizedQuery = search.trim().toLowerCase();
   const { positions: allPositionSummaries, computedEntries } = useMemo(
@@ -298,6 +324,45 @@ export function DcaView() {
     () => getBreakdownText(floatingPnlBreakdown),
     [floatingPnlBreakdown]
   );
+  const normalizedBoundHyperliquidAddress = boundHyperliquidAddress.trim().toLowerCase();
+  const normalizedHyperliquidAddress = hyperliquidAddress.trim().toLowerCase();
+  const hyperliquidAddressChanged =
+    Boolean(normalizedBoundHyperliquidAddress) &&
+    Boolean(normalizedHyperliquidAddress) &&
+    normalizedHyperliquidAddress !== normalizedBoundHyperliquidAddress;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSyncSetting() {
+      setHyperliquidSyncLoading(true);
+      setHyperliquidSyncError("");
+
+      try {
+        const setting = await fetchHyperliquidDcaSyncSetting(activeUserId);
+        if (cancelled) return;
+
+        setBoundHyperliquidAddress(setting?.address ?? "");
+        setHyperliquidAddress(setting?.address ?? "");
+        setHyperliquidLastSyncedAt(setting?.lastSyncedAt ?? "");
+        setClearOldHyperliquidRecords(false);
+      } catch (err) {
+        if (!cancelled) {
+          setHyperliquidSyncError((err as Error).message);
+        }
+      } finally {
+        if (!cancelled) {
+          setHyperliquidSyncLoading(false);
+        }
+      }
+    }
+
+    void loadSyncSetting();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUserId]);
 
   function handleNewBuy() {
     setEditingEntry(null);
@@ -370,6 +435,44 @@ export function DcaView() {
     }
   }
 
+  async function handleHyperliquidSync(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!/^0x[a-fA-F0-9]{40}$/.test(hyperliquidAddress.trim())) {
+      setHyperliquidSyncError(HYPERLIQUID_SYNC_INVALID);
+      setHyperliquidSyncMessage("");
+      return;
+    }
+
+    setHyperliquidSyncing(true);
+    setHyperliquidSyncError("");
+    setHyperliquidSyncMessage("");
+
+    try {
+      const result = await syncHyperliquidDcaEntriesOnServer({
+        profileId: activeUserId,
+        address: hyperliquidAddress.trim(),
+        previousAddressToRemove:
+          hyperliquidAddressChanged && clearOldHyperliquidRecords
+            ? boundHyperliquidAddress
+            : undefined,
+      });
+
+      replaceDcaEntriesByUser({ [activeUserId]: result.entries });
+      setBoundHyperliquidAddress(result.setting.address);
+      setHyperliquidAddress(result.setting.address);
+      setHyperliquidLastSyncedAt(result.setting.lastSyncedAt ?? "");
+      setClearOldHyperliquidRecords(false);
+      setHyperliquidSyncMessage(
+        `${HYPERLIQUID_SYNC_DONE}: ${HYPERLIQUID_SYNC_IMPORTED} ${result.importedCount}, ${HYPERLIQUID_SYNC_REPLACED} ${result.deletedCount}`
+      );
+    } catch (err) {
+      setHyperliquidSyncError((err as Error).message);
+    } finally {
+      setHyperliquidSyncing(false);
+    }
+  }
+
   return (
     <>
       <div className="space-y-4">
@@ -388,6 +491,85 @@ export function DcaView() {
             {ADD_ENTRY_TEXT}
           </Button>
         </div>
+
+        <Card>
+          <form
+            className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between"
+            onSubmit={(event) => {
+              void handleHyperliquidSync(event);
+            }}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <div className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-2 text-text-secondary">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <h2 className="text-sm font-semibold text-text-primary">
+                  {HYPERLIQUID_SYNC_TITLE}
+                </h2>
+                {boundHyperliquidAddress && (
+                  <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-2xs text-text-muted">
+                    {HYPERLIQUID_SYNC_BOUND}
+                  </span>
+                )}
+              </div>
+              <label className="text-xs font-medium text-text-muted" htmlFor="hyperliquid-dca-address">
+                {HYPERLIQUID_SYNC_ADDRESS_LABEL}
+              </label>
+              <input
+                id="hyperliquid-dca-address"
+                value={hyperliquidAddress}
+                onChange={(event) => {
+                  setHyperliquidAddress(event.target.value);
+                  setHyperliquidSyncMessage("");
+                  setHyperliquidSyncError("");
+                }}
+                placeholder={HYPERLIQUID_SYNC_PLACEHOLDER}
+                disabled={hyperliquidSyncLoading || hyperliquidSyncing}
+                className="mt-1 h-9 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary outline-none transition-colors hover:border-border-strong focus:border-accent/40 focus:ring-2 focus:ring-accent/30 disabled:opacity-50"
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-muted">
+                <span>
+                  {hyperliquidLastSyncedAt
+                    ? `${HYPERLIQUID_SYNC_LAST}: ${formatDate(hyperliquidLastSyncedAt)}`
+                    : HYPERLIQUID_SYNC_NEVER}
+                </span>
+                {hyperliquidAddressChanged && (
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={clearOldHyperliquidRecords}
+                      onChange={(event) => setClearOldHyperliquidRecords(event.target.checked)}
+                      className="h-4 w-4 rounded border-border bg-surface-2 text-accent"
+                    />
+                    <span>{HYPERLIQUID_SYNC_CLEAR_OLD}</span>
+                  </label>
+                )}
+              </div>
+              {(hyperliquidSyncError || hyperliquidSyncMessage) && (
+                <p
+                  className={cn(
+                    "mt-2 text-xs",
+                    hyperliquidSyncError ? "text-loss" : "text-profit"
+                  )}
+                >
+                  {hyperliquidSyncError || hyperliquidSyncMessage}
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              loading={hyperliquidSyncing || hyperliquidSyncLoading}
+              iconLeft={<RefreshCw className="h-4 w-4" />}
+              className="shrink-0"
+            >
+              {hyperliquidSyncing ? HYPERLIQUID_SYNC_LOADING : HYPERLIQUID_SYNC_BUTTON}
+            </Button>
+          </form>
+        </Card>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
           <MetricCard label={METRIC_POSITIONS} value={String(activePositions.length)} />

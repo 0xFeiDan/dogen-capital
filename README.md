@@ -17,6 +17,12 @@ Dogen Capital 是一个面向个人交易者的交易日志与复盘系统。它
 - 净值曲线
 - 资产分布
 - 月度盈亏
+- MSTR / BMNR mNAV 监控
+
+mNAV 数据来源：
+
+- MSTR：Strategy 官网公开接口 `https://api.strategy.com/btc/bitcoinKpis` 与 `https://api.strategy.com/btc/mstrKpiData`，mNAV 使用官网企业价值 `entVal` / BTC NAV 口径
+- BMNR：BMNR Treasury Dashboard 官网接口 `https://api.bmnr.rocks/api/treasury/daily-snapshots`
 
 ### 2. 交易日志
 

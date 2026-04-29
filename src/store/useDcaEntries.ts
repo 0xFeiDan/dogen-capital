@@ -7,6 +7,7 @@ import type { AppUserId } from "./useAppUsers";
 import { useAppUsers } from "./useAppUsers";
 
 type DcaEntriesByUser = Record<AppUserId, DcaEntry[]>;
+const DCA_USER_IDS: AppUserId[] = ["me", "partner"];
 
 interface DcaEntriesState {
   entries: DcaEntry[];
@@ -199,14 +200,17 @@ export const useDcaEntries = create<DcaEntriesStore>()(
 
       replaceAllDcaEntriesByUser(dcaEntriesByUser) {
         set((state) => {
-          const normalizedIncoming = normalizeEntriesByUser(dcaEntriesByUser);
-          const mergedByUser: DcaEntriesByUser = {
-            me: mergeIncomingEntries(state.dcaEntriesByUser.me ?? [], normalizedIncoming.me),
-            partner: mergeIncomingEntries(
-              state.dcaEntriesByUser.partner ?? [],
-              normalizedIncoming.partner
-            ),
-          };
+          const mergedByUser: DcaEntriesByUser = { ...state.dcaEntriesByUser };
+
+          DCA_USER_IDS.forEach((userId) => {
+            const incomingEntries = dcaEntriesByUser[userId];
+            if (!Array.isArray(incomingEntries)) return;
+
+            mergedByUser[userId] = mergeIncomingEntries(
+              state.dcaEntriesByUser[userId] ?? [],
+              incomingEntries
+            );
+          });
 
           return {
             dcaEntriesByUser: mergedByUser,
