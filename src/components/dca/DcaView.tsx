@@ -494,40 +494,55 @@ export function DcaView() {
 
         <Card>
           <form
-            className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between"
+            className="space-y-3"
             onSubmit={(event) => {
               void handleHyperliquidSync(event);
             }}
           >
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <div className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-2 text-text-secondary">
-                  <Wallet className="h-4 w-4" />
-                </div>
-                <h2 className="text-sm font-semibold text-text-primary">
-                  {HYPERLIQUID_SYNC_TITLE}
-                </h2>
-                {boundHyperliquidAddress && (
-                  <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-2xs text-text-muted">
-                    {HYPERLIQUID_SYNC_BOUND}
-                  </span>
-                )}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-2 text-text-secondary">
+                <Wallet className="h-4 w-4" />
               </div>
+              <h2 className="text-sm font-semibold text-text-primary">
+                {HYPERLIQUID_SYNC_TITLE}
+              </h2>
+              {boundHyperliquidAddress && (
+                <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-2xs text-text-muted">
+                  {HYPERLIQUID_SYNC_BOUND}
+                </span>
+              )}
+            </div>
+
+            <div>
               <label className="text-xs font-medium text-text-muted" htmlFor="hyperliquid-dca-address">
                 {HYPERLIQUID_SYNC_ADDRESS_LABEL}
               </label>
-              <input
-                id="hyperliquid-dca-address"
-                value={hyperliquidAddress}
-                onChange={(event) => {
-                  setHyperliquidAddress(event.target.value);
-                  setHyperliquidSyncMessage("");
-                  setHyperliquidSyncError("");
-                }}
-                placeholder={HYPERLIQUID_SYNC_PLACEHOLDER}
-                disabled={hyperliquidSyncLoading || hyperliquidSyncing}
-                className="mt-1 h-9 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary outline-none transition-colors hover:border-border-strong focus:border-accent/40 focus:ring-2 focus:ring-accent/30 disabled:opacity-50"
-              />
+
+              <div className="mt-1 flex flex-col gap-3 lg:flex-row lg:items-center">
+                <input
+                  id="hyperliquid-dca-address"
+                  value={hyperliquidAddress}
+                  onChange={(event) => {
+                    setHyperliquidAddress(event.target.value);
+                    setHyperliquidSyncMessage("");
+                    setHyperliquidSyncError("");
+                  }}
+                  placeholder={HYPERLIQUID_SYNC_PLACEHOLDER}
+                  disabled={hyperliquidSyncLoading || hyperliquidSyncing}
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary outline-none transition-colors hover:border-border-strong focus:border-accent/40 focus:ring-2 focus:ring-accent/30 disabled:opacity-50"
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  loading={hyperliquidSyncing || hyperliquidSyncLoading}
+                  iconLeft={<RefreshCw className="h-4 w-4" />}
+                  className="h-9 shrink-0 lg:self-auto"
+                >
+                  {hyperliquidSyncing ? HYPERLIQUID_SYNC_LOADING : HYPERLIQUID_SYNC_BUTTON}
+                </Button>
+              </div>
+
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-muted">
                 <span>
                   {hyperliquidLastSyncedAt
@@ -557,17 +572,6 @@ export function DcaView() {
                 </p>
               )}
             </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              loading={hyperliquidSyncing || hyperliquidSyncLoading}
-              iconLeft={<RefreshCw className="h-4 w-4" />}
-              className="shrink-0"
-            >
-              {hyperliquidSyncing ? HYPERLIQUID_SYNC_LOADING : HYPERLIQUID_SYNC_BUTTON}
-            </Button>
           </form>
         </Card>
 

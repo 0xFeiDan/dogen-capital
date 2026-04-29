@@ -45,8 +45,6 @@ interface SpotAssetContext {
 
 interface MarketInfo {
   ticker: string;
-  name: string;
-  quote: string;
   currentPrice?: number;
 }
 
@@ -115,14 +113,11 @@ async function fetchSpotMetaAndPrices(): Promise<{
 
   for (const market of meta.universe) {
     const base = tokenByIndex.get(market.tokens[0]);
-    const quote = tokenByIndex.get(market.tokens[1]);
     const ctx = ctxByCoin.get(market.name);
     const currentPrice = Number(ctx?.midPx ?? ctx?.markPx);
 
     marketByName.set(market.name, {
       ticker: base?.name ?? market.name,
-      name: quote?.name ? `${base?.name ?? market.name}/${quote.name}` : base?.fullName ?? market.name,
-      quote: quote?.name ?? "USDC",
       currentPrice: Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : undefined,
     });
   }
@@ -323,7 +318,6 @@ export async function loadHypurrscanDcaEntries(
     return {
       id: makeDcaId(address, fill.externalId),
       ticker: market?.ticker ?? fill.coin,
-      name: market?.name,
       side: fill.side,
       assetClass: "crypto",
       currency: "USD",
@@ -331,7 +325,6 @@ export async function loadHypurrscanDcaEntries(
       investedAmount,
       quantity,
       currentPrice: market?.currentPrice,
-      quoteSymbol: market?.quote,
       quoteCurrency: "USD",
       priceUpdatedAt: market?.currentPrice ? now : undefined,
       source: "hyperliquid",
