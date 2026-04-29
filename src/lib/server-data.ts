@@ -1025,6 +1025,9 @@ export async function replaceAutoDcaEntriesForAddress(params: {
   const uniqueEntries = Array.from(
     new Map(params.entries.map((entry) => [entry.id, entry] as const)).values()
   );
+  const incomingRecordIds = uniqueEntries.map((entry) =>
+    toScopedId(params.profileId, entry.id)
+  );
 
   return db.$transaction(async (tx) => {
     if (uniqueEntries.length === 0) {
@@ -1046,8 +1049,19 @@ export async function replaceAutoDcaEntriesForAddress(params: {
     const deleted = await tx.dcaRecord.deleteMany({
       where: {
         profileId: params.profileId,
-        source: provider,
-        sourceAddress: { in: deleteAddresses },
+        OR: [
+          {
+            source: provider,
+            sourceAddress: { in: deleteAddresses },
+          },
+          ...(incomingRecordIds.length > 0
+            ? [
+                {
+                  id: { in: incomingRecordIds },
+                },
+              ]
+            : []),
+        ],
       },
     });
 
