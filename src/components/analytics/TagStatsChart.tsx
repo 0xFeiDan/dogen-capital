@@ -15,6 +15,10 @@ import { useTagStats } from "@/store/selectors";
 import { formatCurrency } from "@/lib/utils";
 import type { TagStats } from "@/types";
 
+const GRID_COLOR = "var(--chart-grid)";
+const TICK_COLOR = "var(--chart-tick)";
+const CURSOR_COLOR = "var(--chart-cursor)";
+
 // ─── Tooltip ─────────────────────────────────────────────────────────────────
 
 function ChartTooltip({
@@ -78,13 +82,13 @@ export default function TagStatsChart() {
         layout="vertical"
         margin={{ top: 4, right: 20, bottom: 4, left: 4 }}
       >
-        <CartesianGrid stroke="#2a2a2a" strokeDasharray="3 3" horizontal={false} />
+        <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" horizontal={false} />
 
         <XAxis
           type="number"
           domain={[0, 100]}
           tickFormatter={(v) => `${v}%`}
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: TICK_COLOR, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
         />
@@ -92,7 +96,7 @@ export default function TagStatsChart() {
         <YAxis
           type="category"
           dataKey="tag"
-          tick={{ fill: "#9b9b9b", fontSize: 11 }}
+          tick={{ fill: TICK_COLOR, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={60}
@@ -101,14 +105,14 @@ export default function TagStatsChart() {
 
         <ReferenceLine
           x={50}
-          stroke="#3a3a3a"
+          stroke={GRID_COLOR}
           strokeDasharray="4 2"
           strokeWidth={1}
         />
 
         <Tooltip
           content={<ChartTooltip />}
-          cursor={{ fill: "rgba(255,255,255,0.03)" }}
+          cursor={{ fill: CURSOR_COLOR }}
         />
 
         <Bar dataKey="winRate" radius={[0, 3, 3, 0]} maxBarSize={22}>

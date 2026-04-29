@@ -43,12 +43,16 @@ const DurationChart = dynamic(
 function WinLossSummary({
   winRate,
   closedTrades,
+  winningTrades,
+  losingTrades,
 }: {
   winRate: number;
   closedTrades: number;
+  winningTrades: number;
+  losingTrades: number;
 }) {
-  const wins = Math.round((winRate / 100) * closedTrades);
-  const losses = closedTrades - wins;
+  const wins = winningTrades;
+  const losses = losingTrades;
   const color = winRate >= 50 ? "#22c55e" : "#ef4444";
 
   return (
@@ -201,6 +205,8 @@ export function AnalyticsView() {
             <WinLossSummary
               winRate={stats.winRate}
               closedTrades={stats.closedTrades}
+              winningTrades={stats.winningTrades}
+              losingTrades={stats.losingTrades}
             />
           ) : (
             <div className="flex items-center justify-center h-28 text-sm text-text-muted">

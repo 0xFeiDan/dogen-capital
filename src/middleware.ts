@@ -5,6 +5,9 @@ import { getSessionSecret } from "@/lib/auth/env";
 import { verifySessionToken } from "@/lib/auth/session";
 
 function isPublicAsset(pathname: string): boolean {
+  const isApiRoute = pathname === "/api" || pathname.startsWith("/api/");
+  if (isApiRoute) return false;
+
   return (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||

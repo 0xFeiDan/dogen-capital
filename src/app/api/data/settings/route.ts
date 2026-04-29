@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isPositiveNumber, isRecord } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { updateInitialCapital } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
-
-interface UpdateSettingsRequest {
-  profileId: string;
-  initialCapital: number;
-}
 
 export async function PATCH(request: Request) {
   try {
@@ -16,24 +13,21 @@ export async function PATCH(request: Request) {
     const originError = await validateSameOriginRequest(request);
     if (originError) return originError;
 
-    let body: UpdateSettingsRequest;
+    let body: unknown;
 
     try {
-      body = (await request.json()) as UpdateSettingsRequest;
+      body = await request.json();
     } catch {
-      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+      return badRequest("Invalid request body");
     }
 
-    if (!isAppUserId(body.profileId) || !Number.isFinite(body.initialCapital)) {
-      return NextResponse.json({ error: "本金数据无效" }, { status: 400 });
+    if (!isRecord(body) || !isAppUserId(body.profileId) || !isPositiveNumber(body.initialCapital)) {
+      return badRequest("Invalid initial capital");
     }
 
     const setting = await updateInitialCapital(body.profileId, body.initialCapital);
     return NextResponse.json({ setting });
   } catch (error) {
-    return NextResponse.json(
-      { error: `更新本金失败: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Failed to update initial capital");
   }
 }

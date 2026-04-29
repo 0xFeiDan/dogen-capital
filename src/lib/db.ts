@@ -5,7 +5,6 @@ if (!process.env.DATABASE_URL?.trim()) {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dogenPrisma__: PrismaClient | undefined;
 }
 

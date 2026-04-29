@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { TrendingUp, BookOpen, Brain, Calendar, Trophy, Keyboard } from "lucide-react";
+import { TrendingUp, BookOpen, Brain, Trophy, Keyboard } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useTrades } from "@/store/useTrades";
 import { useThoughts } from "@/store/useThoughts";
 import { usePortfolioStats } from "@/store/selectors";
-import { formatCurrency, formatPercent, getPnlClass } from "@/lib/utils";
+import { formatCurrency, getPnlClass } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 // ─── Skills ───────────────────────────────────────────────────────────────────

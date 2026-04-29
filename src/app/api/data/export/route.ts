@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { serverError } from "@/lib/api/response";
 import {
   dcaEntriesToJSON,
   thoughtsToJSON,
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
     const stamp = todayStamp();
 
     if (!type) {
-      return NextResponse.json({ error: "缺少导出类型" }, { status: 400 });
+      return NextResponse.json({ error: "Missing export type" }, { status: 400 });
     }
 
     if (type === "backup-json") {
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
     }
 
     if (!isAppUserId(profileId)) {
-      return NextResponse.json({ error: "缺少有效用户" }, { status: 400 });
+      return NextResponse.json({ error: "Missing valid profile" }, { status: 400 });
     }
 
     const snapshot = await getServerSnapshot();
@@ -84,9 +85,8 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({ error: "不支持的导出类型" }, { status: 400 });
+    return NextResponse.json({ error: "Unsupported export type" }, { status: 400 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "服务器导出失败";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, "Server export failed");
   }
 }

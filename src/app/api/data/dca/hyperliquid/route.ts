@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isRecord, isNonEmptyString } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { loadHypurrscanDcaEntries, normalizeHyperliquidAddress } from "@/lib/hypurrscan-dca";
 import {
@@ -6,12 +8,6 @@ import {
   replaceAutoDcaEntriesForAddress,
 } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
-
-interface SyncRequest {
-  profileId: string;
-  address: string;
-  previousAddressToRemove?: string;
-}
 
 export async function GET(request: Request) {
   const authError = await requireAuthenticatedApiRequest();
@@ -28,10 +24,7 @@ export async function GET(request: Request) {
     const setting = await getDcaSyncSetting(profileId, "hyperliquid");
     return NextResponse.json({ setting });
   } catch (error) {
-    return NextResponse.json(
-      { error: `Load Hyperliquid DCA setting failed: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Failed to load Hyperliquid DCA setting");
   }
 }
 
@@ -42,26 +35,30 @@ export async function POST(request: Request) {
   const originError = await validateSameOriginRequest(request);
   if (originError) return originError;
 
-  let body: SyncRequest;
+  let body: unknown;
 
   try {
-    body = (await request.json()) as SyncRequest;
+    body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return badRequest("Invalid request body");
   }
 
-  const address = normalizeHyperliquidAddress(body.address ?? "");
+  if (!isRecord(body)) {
+    return badRequest("Invalid sync payload");
+  }
+
+  const address = normalizeHyperliquidAddress(String(body.address ?? ""));
   const previousAddressToRemove =
-    (body.previousAddressToRemove
+    (isNonEmptyString(body.previousAddressToRemove)
       ? normalizeHyperliquidAddress(body.previousAddressToRemove)
       : undefined) ?? undefined;
 
   if (!isAppUserId(body.profileId) || !address) {
-    return NextResponse.json({ error: "Invalid profile or address" }, { status: 400 });
+    return badRequest("Invalid profile or address");
   }
 
   if (body.previousAddressToRemove && !previousAddressToRemove) {
-    return NextResponse.json({ error: "Invalid previous address" }, { status: 400 });
+    return badRequest("Invalid previous address");
   }
 
   try {
@@ -79,9 +76,6 @@ export async function POST(request: Request) {
       sourceUrl: imported.sourceUrl,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: `Sync Hyperliquid DCA failed: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Sync Hyperliquid DCA failed");
   }
 }

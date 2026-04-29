@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
+import { badRequest, forbidden, serverError } from "@/lib/api/response";
+import { isNonEmptyString, isRecord } from "@/lib/api/validation";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import { getPasswordHash, getSessionSecret, getSessionTtlSeconds } from "@/lib/auth/env";
 import {
@@ -12,85 +14,86 @@ import { verifyPassword } from "@/lib/auth/password";
 import { createSessionToken } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
-  const headerStore = await headers();
-  const origin = headerStore.get("origin");
-  const host = headerStore.get("host");
-  const forwardedProto = headerStore.get("x-forwarded-proto");
-
-  if (origin && host) {
-    const originHost = new URL(origin).host;
-    if (originHost !== host) {
-      return NextResponse.json({ error: "非法请求来源" }, { status: 403 });
-    }
-  }
-
-  const sessionSecret = getSessionSecret();
-  const passwordHash = getPasswordHash();
-
-  if (!sessionSecret || !passwordHash) {
-    return NextResponse.json(
-      { error: "服务端尚未完成安全配置" },
-      { status: 500 }
-    );
-  }
-
-  const forwardedFor = headerStore.get("x-forwarded-for");
-  const clientIp = forwardedFor?.split(",")[0]?.trim() ?? null;
-  const clientKey = getClientKey(clientIp);
-  const rateLimit = checkLoginRateLimit(clientKey);
-
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      {
-        error: `尝试次数过多，请在 ${Math.ceil(rateLimit.retryAfterSeconds / 60)} 分钟后重试`,
-      },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(rateLimit.retryAfterSeconds),
-        },
-      }
-    );
-  }
-
-  let password = "";
-
   try {
-    const body = (await request.json()) as { password?: string };
-    password = body.password?.trim() ?? "";
-  } catch {
-    return NextResponse.json({ error: "请求格式无效" }, { status: 400 });
+    const headerStore = await headers();
+    const origin = headerStore.get("origin");
+    const host = headerStore.get("host");
+    const forwardedProto = headerStore.get("x-forwarded-proto");
+
+    if (!origin || !host) {
+      return forbidden();
+    }
+
+    if (new URL(origin).host !== host) {
+      return forbidden();
+    }
+
+    const sessionSecret = getSessionSecret();
+    const passwordHash = getPasswordHash();
+
+    if (!sessionSecret || !passwordHash) {
+      return serverError("Auth env missing", "Authentication is not configured");
+    }
+
+    const forwardedFor = headerStore.get("x-forwarded-for");
+    const clientIp = forwardedFor?.split(",")[0]?.trim() ?? null;
+    const clientKey = getClientKey(clientIp);
+    const rateLimit = await checkLoginRateLimit(clientKey);
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many attempts. Try again in ${Math.ceil(rateLimit.retryAfterSeconds / 60)} minutes.`,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return badRequest("Invalid request body");
+    }
+
+    if (!isRecord(body) || !isNonEmptyString(body.password)) {
+      return badRequest("Password is required");
+    }
+
+    const valid = verifyPassword(body.password.trim(), passwordHash);
+
+    if (!valid) {
+      const failed = await recordFailedLogin(clientKey);
+      const message = failed.blocked
+        ? `Too many attempts. Try again in ${Math.ceil(failed.retryAfterSeconds / 60)} minutes.`
+        : "Invalid password";
+
+      return NextResponse.json({ error: message }, { status: failed.blocked ? 429 : 401 });
+    }
+
+    await clearLoginRateLimit(clientKey);
+
+    const token = await createSessionToken(sessionSecret, getSessionTtlSeconds());
+    const cookieStore = await cookies();
+
+    cookieStore.set(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure:
+        forwardedProto === "https" ||
+        (!forwardedProto && new URL(request.url).protocol === "https:"),
+      sameSite: "strict",
+      path: "/",
+      maxAge: getSessionTtlSeconds(),
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return serverError(error, "Login failed");
   }
-
-  if (!password) {
-    return NextResponse.json({ error: "请输入密码" }, { status: 400 });
-  }
-
-  const valid = verifyPassword(password, passwordHash);
-
-  if (!valid) {
-    const failed = recordFailedLogin(clientKey);
-    const message = failed.blocked
-      ? `错误次数过多，请在 ${Math.ceil(failed.retryAfterSeconds / 60)} 分钟后重试`
-      : "密码错误";
-
-    return NextResponse.json({ error: message }, { status: failed.blocked ? 429 : 401 });
-  }
-
-  clearLoginRateLimit(clientKey);
-
-  const token = await createSessionToken(sessionSecret, getSessionTtlSeconds());
-  const cookieStore = await cookies();
-
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure:
-      forwardedProto === "https" ||
-      (!forwardedProto && new URL(request.url).protocol === "https:"),
-    sameSite: "strict",
-    path: "/",
-    maxAge: getSessionTtlSeconds(),
-  });
-
-  return NextResponse.json({ ok: true });
 }

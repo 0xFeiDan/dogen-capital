@@ -69,7 +69,11 @@ export default function PerformersTable() {
   }
 
   const best = ranked.slice(0, 5);
-  const worst = [...ranked].reverse().slice(0, 5);
+  const bestIds = new Set(best.map(({ trade }) => trade.id));
+  const worst = [...ranked]
+    .filter(({ trade }) => !bestIds.has(trade.id))
+    .reverse()
+    .slice(0, 5);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -88,9 +92,13 @@ export default function PerformersTable() {
         <p className="text-xs font-semibold text-loss uppercase tracking-wider mb-3">
           最差表现
         </p>
-        {worst.map(({ trade, pnl }) => (
-          <PerformerRow key={trade.id} trade={trade} pnl={pnl} />
-        ))}
+        {worst.length > 0 ? (
+          worst.map(({ trade, pnl }) => (
+            <PerformerRow key={trade.id} trade={trade} pnl={pnl} />
+          ))
+        ) : (
+          <p className="py-2 text-xs text-text-muted">暂无额外记录</p>
+        )}
       </div>
     </div>
   );

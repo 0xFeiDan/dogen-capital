@@ -154,9 +154,7 @@ export function BinancePriceBootstrap() {
       window.removeEventListener("focus", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-    // Use stable key instead of openBinanceTrades array reference
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, openBinanceTradeKey]);
+  }, [hydrated, openBinanceTradeKey, openBinanceTrades.length, refreshQuotes]);
 
   return null;
 }

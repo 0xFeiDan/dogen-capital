@@ -317,11 +317,11 @@ function normalizeCapital(value: number): number {
     return DEFAULT_INITIAL_CAPITAL;
   }
 
-  return Math.round(Math.max(value, 0) * 100) / 100;
+  return Math.round(Math.max(value, 1) * 100) / 100;
 }
 
 function normalizeCapitalForWrite(value: number): number {
-  if (!Number.isFinite(value)) {
+  if (!Number.isFinite(value) || value <= 0) {
     throw new Error("本金数据无效");
   }
 
@@ -380,8 +380,12 @@ function toDcaSyncSetting(record: {
   address: string;
   lastSyncedAt: string | null;
 }): DcaSyncSetting {
+  if (record.provider !== "hyperliquid") {
+    throw new Error(`Unsupported DCA sync provider: ${record.provider}`);
+  }
+
   return {
-    provider: record.provider === "hyperliquid" ? "hyperliquid" : "hyperliquid",
+    provider: record.provider,
     address: record.address,
     lastSyncedAt: record.lastSyncedAt ?? undefined,
   };

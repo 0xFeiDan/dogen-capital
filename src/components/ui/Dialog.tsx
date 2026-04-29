@@ -26,15 +26,20 @@ export function Dialog({
   onConfirm,
   loading = false,
 }: DialogProps) {
+  const handleClose = () => {
+    if (loading) return;
+    onClose();
+  };
+
   // Escape key
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !loading) onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [loading, open, onClose]);
 
   if (!open) return null;
 
@@ -43,7 +48,7 @@ export function Dialog({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleClose}
         aria-hidden="true"
       />
 
@@ -58,7 +63,8 @@ export function Dialog({
         aria-labelledby="dialog-title"
       >
         <button
-          onClick={onClose}
+          onClick={handleClose}
+          disabled={loading}
           className="absolute top-4 right-4 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors"
           aria-label="Close"
         >

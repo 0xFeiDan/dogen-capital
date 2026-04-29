@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
+import { forbidden } from "@/lib/api/response";
 import { SESSION_COOKIE_NAME } from "./constants";
 import { getSessionSecret } from "./env";
 import { verifySessionToken } from "./session";
@@ -21,7 +22,18 @@ export async function validateSameOriginRequest(request: Request) {
   const origin = headerStore.get("origin");
   const host = headerStore.get("host");
 
-  if (!origin || !host) {
+  if (!host) {
+    return forbidden();
+  }
+
+  if (!origin) {
+    const method = request.method.toUpperCase();
+    const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+
+    if (isMutation) {
+      return forbidden();
+    }
+
     return null;
   }
 

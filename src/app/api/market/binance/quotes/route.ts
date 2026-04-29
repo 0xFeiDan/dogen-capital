@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { badRequest, upstreamError } from "@/lib/api/response";
+import { isRecord } from "@/lib/api/validation";
 import {
   requireAuthenticatedApiRequest,
   validateSameOriginRequest,
@@ -7,11 +9,6 @@ import {
   normalizeBinanceSymbol,
   type BinanceBookTickerSnapshot,
 } from "@/lib/pricing";
-
-interface BinanceQuotesRequest {
-  spotSymbols?: string[];
-  usdmFuturesSymbols?: string[];
-}
 
 interface BinanceBookTickerPayload {
   symbol: string;
@@ -129,16 +126,26 @@ export async function POST(request: Request) {
   const originError = await validateSameOriginRequest(request);
   if (originError) return originError;
 
-  let body: BinanceQuotesRequest;
+  let body: unknown;
 
   try {
-    body = (await request.json()) as BinanceQuotesRequest;
+    body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return badRequest("Invalid request body");
   }
 
-  const spotSymbols = sanitizeSymbols(body.spotSymbols);
-  const usdmFuturesSymbols = sanitizeSymbols(body.usdmFuturesSymbols);
+  if (!isRecord(body)) {
+    return badRequest("Invalid quote payload");
+  }
+
+  const spotSymbols = sanitizeSymbols(
+    Array.isArray(body.spotSymbols) ? body.spotSymbols.map(String) : undefined
+  );
+  const usdmFuturesSymbols = sanitizeSymbols(
+    Array.isArray(body.usdmFuturesSymbols)
+      ? body.usdmFuturesSymbols.map(String)
+      : undefined
+  );
 
   try {
     const [spotQuotes, usdmFuturesQuotes] = await Promise.all([
@@ -151,9 +158,6 @@ export async function POST(request: Request) {
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch Binance quotes";
-
-    return NextResponse.json({ error: message }, { status: 502 });
+    return upstreamError(error, "Failed to fetch Binance quotes");
   }
 }

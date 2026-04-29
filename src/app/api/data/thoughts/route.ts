@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isRecord, isValidThought } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { upsertThought } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
 import type { Thought } from "@/types";
-
-interface SaveThoughtRequest {
-  profileId: string;
-  thought: Thought;
-}
 
 export async function POST(request: Request) {
   try {
@@ -17,24 +14,21 @@ export async function POST(request: Request) {
     const originError = await validateSameOriginRequest(request);
     if (originError) return originError;
 
-    let body: SaveThoughtRequest;
+    let body: unknown;
 
     try {
-      body = (await request.json()) as SaveThoughtRequest;
+      body = await request.json();
     } catch {
-      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+      return badRequest("Invalid request body");
     }
 
-    if (!isAppUserId(body.profileId) || !body.thought?.id || !body.thought?.title) {
-      return NextResponse.json({ error: "笔记数据不完整" }, { status: 400 });
+    if (!isRecord(body) || !isAppUserId(body.profileId) || !isValidThought(body.thought)) {
+      return badRequest("Invalid thought payload");
     }
 
-    const thought = await upsertThought(body.profileId, body.thought);
+    const thought = await upsertThought(body.profileId, body.thought as Thought);
     return NextResponse.json({ thought });
   } catch (error) {
-    return NextResponse.json(
-      { error: `保存笔记失败: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Failed to save thought");
   }
 }

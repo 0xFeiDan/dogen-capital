@@ -3,6 +3,7 @@ import {
   LOGIN_MAX_ATTEMPTS,
   LOGIN_WINDOW_MS,
 } from "./constants";
+import { db } from "@/lib/db";
 
 interface AttemptState {
   count: number;
@@ -10,39 +11,74 @@ interface AttemptState {
   blockedUntil: number;
 }
 
-const attempts = new Map<string, AttemptState>();
-
 const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 let lastCleanup = Date.now();
+let setupPromise: Promise<void> | null = null;
 
-function purgeStaleEntries() {
+async function ensureRateLimitTable() {
+  if (!setupPromise) {
+    setupPromise = db.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "LoginRateLimit" (
+        "clientKey" TEXT NOT NULL PRIMARY KEY,
+        "count" INTEGER NOT NULL,
+        "windowStart" INTEGER NOT NULL,
+        "blockedUntil" INTEGER NOT NULL
+      )
+    `.then(() => undefined);
+  }
+
+  await setupPromise;
+}
+
+async function purgeStaleEntries() {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
   lastCleanup = now;
 
-  for (const [key, state] of attempts) {
-    const windowExpired = now - state.windowStart > LOGIN_WINDOW_MS;
-    const blockExpired = state.blockedUntil <= now;
-    if (windowExpired && blockExpired) {
-      attempts.delete(key);
-    }
-  }
+  await db.$executeRaw`
+    DELETE FROM "LoginRateLimit"
+    WHERE ${now} - "windowStart" > ${LOGIN_WINDOW_MS}
+      AND "blockedUntil" <= ${now}
+  `;
 }
 
-function getState(key: string): AttemptState {
+async function getState(key: string): Promise<AttemptState> {
   const now = Date.now();
-  purgeStaleEntries();
-  const existing = attempts.get(key);
+  await ensureRateLimitTable();
+  await purgeStaleEntries();
+
+  const rows = await db.$queryRaw<Array<{
+    count: number;
+    windowStart: number;
+    blockedUntil: number;
+  }>>`
+    SELECT "count", "windowStart", "blockedUntil"
+    FROM "LoginRateLimit"
+    WHERE "clientKey" = ${key}
+    LIMIT 1
+  `;
+  const existing = rows[0];
 
   if (!existing) {
     const next = { count: 0, windowStart: now, blockedUntil: 0 };
-    attempts.set(key, next);
+    await db.$executeRaw`
+      INSERT INTO "LoginRateLimit" ("clientKey", "count", "windowStart", "blockedUntil")
+      VALUES (${key}, ${next.count}, ${next.windowStart}, ${next.blockedUntil})
+    `;
     return next;
   }
 
   if (now - existing.windowStart > LOGIN_WINDOW_MS) {
     existing.count = 0;
     existing.windowStart = now;
+    existing.blockedUntil = 0;
+    await db.$executeRaw`
+      UPDATE "LoginRateLimit"
+      SET "count" = ${existing.count},
+          "windowStart" = ${existing.windowStart},
+          "blockedUntil" = ${existing.blockedUntil}
+      WHERE "clientKey" = ${key}
+    `;
   }
 
   return existing;
@@ -52,12 +88,12 @@ export function getClientKey(ip: string | null): string {
   return ip?.trim() || "unknown";
 }
 
-export function checkLoginRateLimit(key: string): {
+export async function checkLoginRateLimit(key: string): Promise<{
   allowed: boolean;
   retryAfterSeconds: number;
-} {
+}> {
   const now = Date.now();
-  const state = getState(key);
+  const state = await getState(key);
 
   if (state.blockedUntil > now) {
     return {
@@ -69,26 +105,45 @@ export function checkLoginRateLimit(key: string): {
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
-export function recordFailedLogin(key: string): {
+export async function recordFailedLogin(key: string): Promise<{
   blocked: boolean;
   retryAfterSeconds: number;
-} {
+}> {
   const now = Date.now();
-  const state = getState(key);
+  const state = await getState(key);
 
   state.count += 1;
 
   if (state.count >= LOGIN_MAX_ATTEMPTS) {
     state.blockedUntil = now + LOGIN_BLOCK_MS;
+    await db.$executeRaw`
+      UPDATE "LoginRateLimit"
+      SET "count" = ${state.count},
+          "windowStart" = ${state.windowStart},
+          "blockedUntil" = ${state.blockedUntil}
+      WHERE "clientKey" = ${key}
+    `;
     return {
       blocked: true,
       retryAfterSeconds: Math.ceil(LOGIN_BLOCK_MS / 1000),
     };
   }
 
+  await db.$executeRaw`
+    UPDATE "LoginRateLimit"
+    SET "count" = ${state.count},
+        "windowStart" = ${state.windowStart},
+        "blockedUntil" = ${state.blockedUntil}
+    WHERE "clientKey" = ${key}
+  `;
+
   return { blocked: false, retryAfterSeconds: 0 };
 }
 
-export function clearLoginRateLimit(key: string): void {
-  attempts.delete(key);
+export async function clearLoginRateLimit(key: string): Promise<void> {
+  await ensureRateLimitTable();
+  await db.$executeRaw`
+    DELETE FROM "LoginRateLimit"
+    WHERE "clientKey" = ${key}
+  `;
 }

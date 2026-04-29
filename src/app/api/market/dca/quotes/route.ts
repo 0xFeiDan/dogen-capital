@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { badRequest, upstreamError } from "@/lib/api/response";
+import { isRecord } from "@/lib/api/validation";
 import {
   requireAuthenticatedApiRequest,
   validateSameOriginRequest,
@@ -9,11 +11,6 @@ import {
   type DcaMarketQuote,
 } from "@/lib/dca-pricing";
 import type { Currency } from "@/types";
-
-interface DcaQuotesRequest {
-  cryptoSymbols?: string[];
-  stockSymbols?: string[];
-}
 
 interface BinanceBookTickerPayload {
   symbol: string;
@@ -54,12 +51,10 @@ interface TwelveDataQuotePayload {
 const TWELVE_DATA_API_URL = "https://api.twelvedata.com/quote";
 const BINANCE_BOOK_TICKER_URL = "https://api.binance.com/api/v3/ticker/bookTicker";
 const BITGET_SPOT_TICKERS_URL = "https://api.bitget.com/api/v2/spot/market/tickers";
-const TWELVE_DATA_CACHE_MS =
-  Math.max(15, Number(process.env.TWELVEDATA_CACHE_SECONDS ?? 60)) * 1000;
-const stockQuoteCache = new Map<
-  string,
-  { quote: DcaMarketQuote | null; expiresAt: number }
->();
+const TWELVE_DATA_CACHE_SECONDS = Math.max(
+  15,
+  Number(process.env.TWELVEDATA_CACHE_SECONDS ?? 60)
+);
 
 function sanitizeSymbols(symbols?: string[], pattern = /[^A-Z0-9]/g): string[] {
   if (!Array.isArray(symbols)) return [];
@@ -220,33 +215,21 @@ async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
   const apiKey = process.env.TWELVEDATA_API_KEY;
   if (!apiKey) return null;
 
-  const cacheKey = symbol.toUpperCase();
-  const cached = stockQuoteCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.quote;
-  }
-
   const url = new URL(TWELVE_DATA_API_URL);
   url.searchParams.set("symbol", symbol);
   url.searchParams.set("apikey", apiKey);
   url.searchParams.set("interval", "1min");
 
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, {
+    next: { revalidate: TWELVE_DATA_CACHE_SECONDS },
+  });
 
   if (!response.ok) {
-    stockQuoteCache.set(cacheKey, {
-      quote: null,
-      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
-    });
     return null;
   }
 
   const payload = (await response.json()) as TwelveDataQuotePayload;
   if (payload.status === "error") {
-    stockQuoteCache.set(cacheKey, {
-      quote: null,
-      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
-    });
     return null;
   }
 
@@ -254,10 +237,6 @@ async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
   const currency = String(payload.currency ?? "USD").toUpperCase();
 
   if (!Number.isFinite(price) || price <= 0 || !isSupportedQuoteCurrency(currency)) {
-    stockQuoteCache.set(cacheKey, {
-      quote: null,
-      expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
-    });
     return null;
   }
 
@@ -269,11 +248,6 @@ async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
     source: "twelvedata",
     fetchedAt: new Date().toISOString(),
   };
-
-  stockQuoteCache.set(cacheKey, {
-    quote,
-    expiresAt: Date.now() + TWELVE_DATA_CACHE_MS,
-  });
 
   return quote;
 }
@@ -292,16 +266,24 @@ export async function POST(request: Request) {
   const originError = await validateSameOriginRequest(request);
   if (originError) return originError;
 
-  let body: DcaQuotesRequest;
+  let body: unknown;
 
   try {
-    body = (await request.json()) as DcaQuotesRequest;
+    body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return badRequest("Invalid request body");
   }
 
-  const cryptoSymbols = sanitizeSymbols(body.cryptoSymbols);
-  const stockSymbols = sanitizeStockSymbols(body.stockSymbols);
+  if (!isRecord(body)) {
+    return badRequest("Invalid quote payload");
+  }
+
+  const cryptoSymbols = sanitizeSymbols(
+    Array.isArray(body.cryptoSymbols) ? body.cryptoSymbols.map(String) : undefined
+  );
+  const stockSymbols = sanitizeStockSymbols(
+    Array.isArray(body.stockSymbols) ? body.stockSymbols.map(String) : undefined
+  );
 
   try {
     const [cryptoQuotes, stockQuotes] = await Promise.all([
@@ -314,8 +296,6 @@ export async function POST(request: Request) {
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch DCA market quotes";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return upstreamError(error, "Failed to fetch DCA market quotes");
   }
 }

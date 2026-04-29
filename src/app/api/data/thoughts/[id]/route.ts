@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isRecord, isValidThought } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { deleteThought, upsertThought } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
 import type { Thought } from "@/types";
-
-interface UpdateThoughtRequest {
-  profileId: string;
-  thought: Thought;
-}
 
 export async function PATCH(
   request: Request,
@@ -21,23 +18,27 @@ export async function PATCH(
 
   try {
     const { id } = await context.params;
-    let body: UpdateThoughtRequest;
+    let body: unknown;
 
     try {
-      body = (await request.json()) as UpdateThoughtRequest;
+      body = await request.json();
     } catch {
-      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+      return badRequest("Invalid request body");
     }
 
-    if (!isAppUserId(body.profileId) || !body.thought || body.thought.id !== id) {
-      return NextResponse.json({ error: "笔记数据不完整" }, { status: 400 });
+    if (
+      !isRecord(body) ||
+      !isAppUserId(body.profileId) ||
+      !isValidThought(body.thought) ||
+      body.thought.id !== id
+    ) {
+      return badRequest("Invalid thought payload");
     }
 
-    const thought = await upsertThought(body.profileId, body.thought);
+    const thought = await upsertThought(body.profileId, body.thought as Thought);
     return NextResponse.json({ thought });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "保存笔记失败";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, "Failed to save thought");
   }
 }
 
@@ -57,13 +58,12 @@ export async function DELETE(
     const profileId = searchParams.get("profileId");
 
     if (!isAppUserId(profileId)) {
-      return NextResponse.json({ error: "用户信息无效" }, { status: 400 });
+      return badRequest("Invalid profile");
     }
 
     await deleteThought(profileId, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "删除笔记失败";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, "Failed to delete thought");
   }
 }

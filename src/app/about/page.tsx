@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { AboutView } from "@/components/about/AboutView";
 
 export default function AboutPage() {
-  redirect("/dashboard");
+  return <AboutView />;
 }

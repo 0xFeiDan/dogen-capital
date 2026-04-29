@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { upstreamError } from "@/lib/api/response";
 import { requireAuthenticatedApiRequest } from "@/lib/auth/api";
 
 export const dynamic = "force-dynamic";
@@ -205,8 +206,8 @@ export async function GET() {
   const errors = results.flatMap((result, index) => {
     if (result.status === "fulfilled") return [];
 
-    const reason = result.reason instanceof Error ? result.reason.message : "Failed to fetch";
-    return [`${sources[index].label}: ${reason}`];
+    console.error(`Failed to fetch ${sources[index].label} mNAV`, result.reason);
+    return [`${sources[index].label}: unavailable`];
   });
 
   if (items.length > 0) {
@@ -217,8 +218,5 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json(
-    { error: errors.join(" / ") || "Failed to fetch mNAV data" },
-    { status: 502 }
-  );
+  return upstreamError(errors.join(" / "), "Failed to fetch mNAV data");
 }

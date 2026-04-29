@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { serverError } from "@/lib/api/response";
 import { requireAuthenticatedApiRequest } from "@/lib/auth/api";
 import { getServerSnapshot } from "@/lib/server-data";
 
@@ -10,9 +11,6 @@ export async function GET() {
     const snapshot = await getServerSnapshot();
     return NextResponse.json(snapshot);
   } catch (error) {
-    return NextResponse.json(
-      { error: `服务器同步初始化失败: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Server sync initialization failed");
   }
 }

@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isRecord, isValidTrade } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { upsertTrade } from "@/lib/server-data";
 import { isAppUserId } from "@/lib/users";
 import type { Trade } from "@/types";
-
-interface SaveTradeRequest {
-  profileId: string;
-  trade: Trade;
-}
 
 export async function POST(request: Request) {
   try {
@@ -17,24 +14,21 @@ export async function POST(request: Request) {
     const originError = await validateSameOriginRequest(request);
     if (originError) return originError;
 
-    let body: SaveTradeRequest;
+    let body: unknown;
 
     try {
-      body = (await request.json()) as SaveTradeRequest;
+      body = await request.json();
     } catch {
-      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+      return badRequest("Invalid request body");
     }
 
-    if (!isAppUserId(body.profileId) || !body.trade?.id || !body.trade?.ticker) {
-      return NextResponse.json({ error: "交易数据不完整" }, { status: 400 });
+    if (!isRecord(body) || !isAppUserId(body.profileId) || !isValidTrade(body.trade)) {
+      return badRequest("Invalid trade payload");
     }
 
-    const trade = await upsertTrade(body.profileId, body.trade);
+    const trade = await upsertTrade(body.profileId, body.trade as Trade);
     return NextResponse.json({ trade });
   } catch (error) {
-    return NextResponse.json(
-      { error: `保存交易失败: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Failed to save trade");
   }
 }

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { badRequest, serverError } from "@/lib/api/response";
+import { isRecord } from "@/lib/api/validation";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
 import { jsonToDcaEntries, jsonToThoughts, jsonToTrades } from "@/lib/io";
 import {
@@ -15,120 +17,45 @@ import { APP_USERS, isAppUserId } from "@/lib/users";
 import type { DcaEntry } from "@/types";
 
 type ImportMode = "merge" | "overwrite";
+const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
-interface ImportItemsRequest {
-  format: "trades-json" | "trades-csv" | "thoughts-json" | "dca-json";
-  mode: ImportMode;
-  profileId: string;
-  items: unknown[];
+function normalizeMode(value: unknown): ImportMode {
+  return value === "overwrite" ? "overwrite" : "merge";
 }
 
-interface ImportBackupRequest {
-  format: "backup-json";
-  mode: ImportMode;
-  payload: {
-    tradesByUser: Partial<TradesByUser>;
-    thoughtsByUser: Partial<ThoughtsByUser>;
-    dcaByUser: Partial<DcaByUser>;
-    settingsByUser: Partial<SettingsByUser>;
-  };
-}
-
-type ImportRequest = ImportItemsRequest | ImportBackupRequest;
-
-function normalizeInitialCapital(value: unknown, userLabel: string): number {
+function normalizeInitialCapital(value: unknown): number {
   const amount = Number(value ?? 100000);
 
-  if (!Number.isFinite(amount)) {
-    throw new Error(`${userLabel} 的本金无效`);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Invalid initial capital");
   }
 
-  return Math.round(Math.max(amount, 0) * 100) / 100;
+  return Math.round(amount * 100) / 100;
 }
 
 function normalizeSettingsByUser(source: Partial<SettingsByUser>): SettingsByUser {
   return {
     me: {
-      initialCapital: normalizeInitialCapital(source.me?.initialCapital, "我"),
+      initialCapital: normalizeInitialCapital(source.me?.initialCapital),
     },
     partner: {
-      initialCapital: normalizeInitialCapital(source.partner?.initialCapital, "女朋友"),
+      initialCapital: normalizeInitialCapital(source.partner?.initialCapital),
     },
   };
 }
 
-function parseDcaEntries(value: unknown, userId: keyof DcaByUser): DcaEntry[] {
-  if (!Array.isArray(value)) {
-    return [];
+function parseDcaEntries(value: unknown): DcaEntry[] {
+  const result = jsonToDcaEntries(JSON.stringify(Array.isArray(value) ? value : []));
+  if (result.errors.length > 0) {
+    throw new Error(result.errors[0]);
   }
-
-  return value.flatMap((item, index) => {
-    if (typeof item !== "object" || item === null) {
-      throw new Error(`${userId} 的定投记录第 ${index + 1} 项无效`);
-    }
-
-    const entry = item as Partial<DcaEntry>;
-
-    if (
-      typeof entry.id !== "string" ||
-      typeof entry.ticker !== "string" ||
-      (entry.assetClass !== "stock" && entry.assetClass !== "crypto") ||
-      typeof entry.currency !== "string" ||
-      typeof entry.investedAt !== "string" ||
-      typeof entry.investedAmount !== "number" ||
-      !Number.isFinite(entry.investedAmount) ||
-      entry.investedAmount <= 0 ||
-      typeof entry.quantity !== "number" ||
-      !Number.isFinite(entry.quantity) ||
-      entry.quantity <= 0 ||
-      typeof entry.createdAt !== "string" ||
-      typeof entry.updatedAt !== "string"
-    ) {
-      throw new Error(`${userId} 的定投记录第 ${index + 1} 项无效`);
-    }
-
-    return [
-      {
-        id: entry.id,
-        ticker: entry.ticker.trim().toUpperCase(),
-        name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : undefined,
-        side: entry.side === "sell" ? "sell" : "buy",
-        assetClass: entry.assetClass,
-        currency: entry.currency,
-        investedAt: entry.investedAt,
-        investedAmount: entry.investedAmount,
-        quantity: entry.quantity,
-        currentPrice:
-          typeof entry.currentPrice === "number" && Number.isFinite(entry.currentPrice)
-            ? entry.currentPrice
-            : undefined,
-        quoteSymbol:
-          typeof entry.quoteSymbol === "string" && entry.quoteSymbol.trim()
-            ? entry.quoteSymbol.trim().toUpperCase()
-            : undefined,
-        quoteCurrency:
-          typeof entry.quoteCurrency === "string" && entry.quoteCurrency.trim()
-            ? (entry.quoteCurrency as DcaEntry["quoteCurrency"])
-            : undefined,
-        priceUpdatedAt:
-          typeof entry.priceUpdatedAt === "string" && entry.priceUpdatedAt.trim()
-            ? entry.priceUpdatedAt
-            : undefined,
-        notes:
-          typeof entry.notes === "string" && entry.notes.trim()
-            ? entry.notes.trim()
-            : undefined,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-      },
-    ];
-  });
+  return result.data;
 }
 
 function normalizeDcaByUser(source: Partial<DcaByUser>): DcaByUser {
   return {
-    me: parseDcaEntries(source.me, "me"),
-    partner: parseDcaEntries(source.partner, "partner"),
+    me: parseDcaEntries(source.me),
+    partner: parseDcaEntries(source.partner),
   };
 }
 
@@ -140,19 +67,36 @@ export async function POST(request: Request) {
     const originError = await validateSameOriginRequest(request);
     if (originError) return originError;
 
-    let body: ImportRequest;
-
-    try {
-      body = (await request.json()) as ImportRequest;
-    } catch {
-      return NextResponse.json({ error: "请求体无效" }, { status: 400 });
+    const contentLength = Number(request.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMPORT_BYTES) {
+      return NextResponse.json({ error: "Import payload is too large" }, { status: 413 });
     }
 
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return badRequest("Invalid request body");
+    }
+
+    if (!isRecord(body) || typeof body.format !== "string") {
+      return badRequest("Invalid import payload");
+    }
+
+    const mode = normalizeMode(body.mode);
+
     if (body.format === "backup-json") {
-      if (typeof body.payload !== "object" || body.payload === null) {
-        return NextResponse.json({ error: "备份文件内容无效" }, { status: 400 });
+      if (!isRecord(body.payload)) {
+        return badRequest("Invalid backup payload");
       }
 
+      const payload = body.payload as {
+        tradesByUser?: Partial<TradesByUser>;
+        thoughtsByUser?: Partial<ThoughtsByUser>;
+        dcaByUser?: Partial<DcaByUser>;
+        settingsByUser?: Partial<SettingsByUser>;
+      };
       const tradesByUser = {} as TradesByUser;
       const thoughtsByUser = {} as ThoughtsByUser;
       let dcaByUser: DcaByUser;
@@ -160,21 +104,15 @@ export async function POST(request: Request) {
 
       for (const user of APP_USERS) {
         const tradesResult = jsonToTrades(
-          JSON.stringify(body.payload.tradesByUser?.[user.id] ?? [])
+          JSON.stringify(payload.tradesByUser?.[user.id] ?? [])
         );
         const thoughtsResult = jsonToThoughts(
-          JSON.stringify(body.payload.thoughtsByUser?.[user.id] ?? [])
+          JSON.stringify(payload.thoughtsByUser?.[user.id] ?? [])
         );
 
         if (tradesResult.errors.length > 0 || thoughtsResult.errors.length > 0) {
-          return NextResponse.json(
-            {
-              error:
-                tradesResult.errors[0] ??
-                thoughtsResult.errors[0] ??
-                "备份文件内容无效",
-            },
-            { status: 400 }
+          return badRequest(
+            tradesResult.errors[0] ?? thoughtsResult.errors[0] ?? "Invalid backup payload"
           );
         }
 
@@ -183,13 +121,10 @@ export async function POST(request: Request) {
       }
 
       try {
-        dcaByUser = normalizeDcaByUser(body.payload.dcaByUser ?? {});
-        settingsByUser = normalizeSettingsByUser(body.payload.settingsByUser ?? {});
+        dcaByUser = normalizeDcaByUser(payload.dcaByUser ?? {});
+        settingsByUser = normalizeSettingsByUser(payload.settingsByUser ?? {});
       } catch (error) {
-        return NextResponse.json(
-          { error: error instanceof Error ? error.message : "备份文件内容无效" },
-          { status: 400 }
-        );
+        return badRequest(error instanceof Error ? error.message : "Invalid backup payload");
       }
 
       await importBackup(
@@ -199,47 +134,42 @@ export async function POST(request: Request) {
           dcaByUser,
           settingsByUser,
         },
-        body.mode
+        mode
       );
 
       return NextResponse.json({ ok: true });
     }
 
     if (!isAppUserId(body.profileId) || !Array.isArray(body.items)) {
-      return NextResponse.json({ error: "导入参数无效" }, { status: 400 });
+      return badRequest("Invalid import payload");
     }
 
     if (body.format === "thoughts-json") {
       const result = jsonToThoughts(JSON.stringify(body.items));
-      if (result.errors.length > 0) {
-        return NextResponse.json({ error: result.errors[0] }, { status: 400 });
-      }
+      if (result.errors.length > 0) return badRequest(result.errors[0]);
 
-      await importThoughtsForProfile(body.profileId, result.data, body.mode);
+      await importThoughtsForProfile(body.profileId, result.data, mode);
       return NextResponse.json({ ok: true, count: result.data.length });
     }
 
     if (body.format === "dca-json") {
       const result = jsonToDcaEntries(JSON.stringify(body.items));
-      if (result.errors.length > 0) {
-        return NextResponse.json({ error: result.errors[0] }, { status: 400 });
-      }
+      if (result.errors.length > 0) return badRequest(result.errors[0]);
 
-      await importDcaEntriesForProfile(body.profileId, result.data, body.mode);
+      await importDcaEntriesForProfile(body.profileId, result.data, mode);
       return NextResponse.json({ ok: true, count: result.data.length });
     }
 
-    const result = jsonToTrades(JSON.stringify(body.items));
-    if (result.errors.length > 0) {
-      return NextResponse.json({ error: result.errors[0] }, { status: 400 });
+    if (body.format === "trades-json" || body.format === "trades-csv") {
+      const result = jsonToTrades(JSON.stringify(body.items));
+      if (result.errors.length > 0) return badRequest(result.errors[0]);
+
+      await importTradesForProfile(body.profileId, result.data, mode);
+      return NextResponse.json({ ok: true, count: result.data.length });
     }
 
-    await importTradesForProfile(body.profileId, result.data, body.mode);
-    return NextResponse.json({ ok: true, count: result.data.length });
+    return badRequest("Invalid import format");
   } catch (error) {
-    return NextResponse.json(
-      { error: `导入数据失败: ${(error as Error).message}` },
-      { status: 500 }
-    );
+    return serverError(error, "Failed to import data");
   }
 }

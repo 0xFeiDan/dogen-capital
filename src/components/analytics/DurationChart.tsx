@@ -37,6 +37,9 @@ function ChartTooltip({
 // ─── Component ─────────────────────────────���─────────────────────────────────
 
 const BAR_COLORS = ["#e8d5a3", "#c8b583", "#a89563", "#887543", "#685523"];
+const GRID_COLOR = "var(--chart-grid)";
+const TICK_COLOR = "var(--chart-tick)";
+const CURSOR_COLOR = "var(--chart-cursor)";
 
 export default function DurationChart() {
   const data = useDurationBuckets();
@@ -54,21 +57,21 @@ export default function DurationChart() {
     <ResponsiveContainer width="100%" height={180}>
       <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid
-          stroke="#2a2a2a"
+          stroke={GRID_COLOR}
           strokeDasharray="3 3"
           vertical={false}
         />
 
         <XAxis
           dataKey="label"
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: TICK_COLOR, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
         />
 
         <YAxis
           allowDecimals={false}
-          tick={{ fill: "#6b6b6b", fontSize: 11 }}
+          tick={{ fill: TICK_COLOR, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={24}
@@ -76,7 +79,7 @@ export default function DurationChart() {
 
         <Tooltip
           content={<ChartTooltip />}
-          cursor={{ fill: "rgba(255,255,255,0.03)" }}
+          cursor={{ fill: CURSOR_COLOR }}
         />
 
         <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={48}>

@@ -40,7 +40,6 @@ import {
 import type { DcaByUser, SettingsByUser, ThoughtsByUser, TradesByUser } from "@/lib/server-data";
 import { APP_USERS, isAppUserId, type AppUserId } from "@/lib/users";
 import { useAppUsers } from "@/store/useAppUsers";
-import { usePortfolioSettings } from "@/store/usePortfolioSettings";
 import { useDcaEntries } from "@/store/useDcaEntries";
 import { useThoughts } from "@/store/useThoughts";
 import { useTrades } from "@/store/useTrades";
@@ -340,7 +339,6 @@ export function DataModal({ open, onClose }: DataModalProps) {
   const tradesByUser = useTrades((state) => state.tradesByUser);
   const thoughtsByUser = useThoughts((state) => state.thoughtsByUser);
   const dcaEntriesByUser = useDcaEntries((state) => state.dcaEntriesByUser);
-  const settingsByUser = usePortfolioSettings((state) => state.settingsByUser);
 
   const [tab, setTab] = useState<Tab>("export");
   const [format, setFormat] = useState<ImportFormat>("backup-json");
@@ -358,11 +356,6 @@ export function DataModal({ open, onClose }: DataModalProps) {
     () => APP_USERS.reduce((sum, user) => sum + (thoughtsByUser[user.id]?.length ?? 0), 0),
     [thoughtsByUser]
   );
-  const totalDcaEntries = useMemo(
-    () => APP_USERS.reduce((sum, user) => sum + (dcaEntriesByUser[user.id]?.length ?? 0), 0),
-    [dcaEntriesByUser]
-  );
-
   const handleExport = async (
     type: "backup-json" | "trades-json" | "trades-csv" | "thoughts-json" | "dca-json"
   ) => {

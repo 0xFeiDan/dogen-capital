@@ -24,10 +24,12 @@ export function ServerSyncBootstrap() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storesReady = tradesHydrated && thoughtsHydrated && dcaHydrated && settingsHydrated;
 
-  if (prevPathnameRef.current === "/login" && pathname !== "/login") {
-    hasBootstrappedRef.current = false;
-  }
-  prevPathnameRef.current = pathname;
+  useEffect(() => {
+    if (prevPathnameRef.current === "/login" && pathname !== "/login") {
+      hasBootstrappedRef.current = false;
+    }
+    prevPathnameRef.current = pathname;
+  }, [pathname]);
 
   const sync = useCallback(async () => {
     try {
