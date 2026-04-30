@@ -18,6 +18,11 @@ interface ExtractedNumber {
   score: number;
 }
 
+interface TokenCandidate extends ExtractedNumber {
+  asset: "ETH" | "BTC";
+  docKey: string;
+}
+
 interface BmnrFilingDocument {
   form: string;
   accessionNumber: string;
@@ -129,20 +134,21 @@ const TWELVE_DATA_API_URL = "https://api.twelvedata.com/quote";
 const BINANCE_BOOK_TICKER_URL = "https://api.binance.com/api/v3/ticker/bookTicker";
 const BITGET_SPOT_TICKERS_URL = "https://api.bitget.com/api/v2/spot/market/tickers";
 
-const FALLBACKS = {
-  ethQty: numberFromEnv("BMNR_FALLBACK_ETH_QTY", 5_078_386),
-  btcQty: numberFromEnv("BMNR_FALLBACK_BTC_QTY", 0),
-  cashUsd: numberFromEnv("BMNR_FALLBACK_CASH_USD", 940_000_000),
-  sharesOutstanding: numberFromEnv("BMNR_FALLBACK_SHARES_OUTSTANDING", 548_500_000),
-  debtUsd: numberFromEnv("BMNR_FALLBACK_DEBT_USD", 0),
-  preferredNotionalUsd: numberFromEnv("BMNR_FALLBACK_PREFERRED_NOTIONAL_USD", 0),
-};
+const BMNR_MAX_BTC_HOLDINGS = numberFromEnv("BMNR_MAX_BTC_HOLDINGS", 10_000);
 
 let lastSecRequestAt = 0;
 
 function numberFromEnv(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function failNumber(message: string): never {
+  throw new Error(message);
+}
+
+function failMetadata(message: string): never {
+  throw new Error(message);
 }
 
 function round(value: number, digits = 2): number {
@@ -182,8 +188,37 @@ function parseMoney(raw: string, unit?: string): number | null {
 }
 
 function parseDateText(value: string): string | undefined {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+  const trimmed = value.trim();
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return trimmed;
+
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (slash) {
+    const year = slash[3].length === 2 ? `20${slash[3]}` : slash[3];
+    return `${year}-${slash[1].padStart(2, "0")}-${slash[2].padStart(2, "0")}`;
+  }
+
+  const monthNames: Record<string, string> = {
+    january: "01",
+    february: "02",
+    march: "03",
+    april: "04",
+    may: "05",
+    june: "06",
+    july: "07",
+    august: "08",
+    september: "09",
+    october: "10",
+    november: "11",
+    december: "12",
+  };
+  const longDate = trimmed.match(/^([A-Z][a-z]+)\s+(\d{1,2}),\s+(\d{4})$/);
+  const month = longDate?.[1] ? monthNames[longDate[1].toLowerCase()] : undefined;
+  if (longDate && month) {
+    return `${longDate[3]}-${month}-${longDate[2].padStart(2, "0")}`;
+  }
+
+  return undefined;
 }
 
 function extractAsOfDate(text: string): string | undefined {
@@ -191,6 +226,21 @@ function extractAsOfDate(text: string): string | undefined {
     /as of (?:\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?\s*(?:ET|EST|EDT)?\s*on\s*)?([A-Z][a-z]+ \d{1,2}, \d{4})/i,
     /as of (\d{1,2}\/\d{1,2}\/\d{2,4})/i,
     /as of (\d{4}-\d{2}-\d{2})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const parsed = match?.[1] ? parseDateText(match[1]) : undefined;
+    if (parsed) return parsed;
+  }
+
+  return undefined;
+}
+
+function extractFilingDateOverride(text: string): string | undefined {
+  const patterns = [
+    /as filed with the (?:u\.s\.\s*)?securities and exchange commission on ([A-Z][a-z]+ \d{1,2}, \d{4})/i,
+    /prospectus dated ([A-Z][a-z]+ \d{1,2}, \d{4})/i,
   ];
 
   for (const pattern of patterns) {
@@ -228,6 +278,11 @@ async function sleep(ms: number) {
 }
 
 async function secFetch<T>(url: string, parse: "json" | "text"): Promise<T> {
+  const userAgent = process.env.SEC_USER_AGENT?.trim();
+  if (!userAgent || /contact@example\.com/i.test(userAgent)) {
+    throw new Error("SEC_USER_AGENT must be configured with a real contact email");
+  }
+
   const elapsed = Date.now() - lastSecRequestAt;
   if (elapsed < SEC_REQUEST_DELAY_MS) {
     await sleep(SEC_REQUEST_DELAY_MS - elapsed);
@@ -240,7 +295,7 @@ async function secFetch<T>(url: string, parse: "json" | "text"): Promise<T> {
       cache: "no-store",
       headers: {
         Accept: parse === "json" ? "application/json" : "text/html,text/plain,*/*",
-        "User-Agent": process.env.SEC_USER_AGENT ?? "DogenCapital/1.0 contact@example.com",
+        "User-Agent": userAgent,
       },
     },
     SEC_TIMEOUT_MS
@@ -298,9 +353,10 @@ async function fetchTwelveDataPrice(symbol: string): Promise<{ price: number; me
     price,
     metadata: {
       source: "twelvedata",
-      document_url: url.toString().replace(apiKey, "***"),
+      document_url: `${TWELVE_DATA_API_URL}?symbol=${encodeURIComponent(symbol)}`,
       confidence: "high",
       matched_text_snippet: `${symbol} quote`,
+      as_of_date: new Date().toISOString(),
     },
   };
 }
@@ -322,6 +378,7 @@ async function fetchCryptoPrice(symbol: "BTCUSDT" | "ETHUSDT"): Promise<{ price:
           document_url: binanceUrl,
           confidence: "high",
           matched_text_snippet: symbol,
+          as_of_date: new Date().toISOString(),
         },
       };
     }
@@ -348,6 +405,7 @@ async function fetchCryptoPrice(symbol: "BTCUSDT" | "ETHUSDT"): Promise<{ price:
       document_url: bitgetUrl,
       confidence: "medium",
       matched_text_snippet: symbol,
+      as_of_date: new Date().toISOString(),
     },
   };
 }
@@ -420,13 +478,14 @@ async function fetchBmnrFilingDocuments(): Promise<BmnrFilingDocument[]> {
 
       try {
         const raw = await secFetch<string>(documentUrl, "text");
+        const text = stripHtml(raw);
         docs.push({
           form: filing.form,
           accessionNumber: filing.accessionNumber,
-          filingDate: filing.filingDate,
+          filingDate: extractFilingDateOverride(text) ?? filing.filingDate,
           documentUrl,
           documentName,
-          text: stripHtml(raw),
+          text,
           priority: filingPriority(filing.form, documentName),
         });
       } catch {
@@ -443,7 +502,7 @@ function buildMetadata(doc: BmnrFilingDocument, confidence: Confidence, text: st
     source: "sec",
     source_form: doc.form,
     accession_number: doc.accessionNumber,
-    filing_date: doc.filingDate,
+    filing_date: extractFilingDateOverride(text) ?? doc.filingDate,
     as_of_date: extractAsOfDate(text) ?? doc.filingDate,
     document_url: doc.documentUrl,
     confidence,
@@ -462,9 +521,11 @@ function scoreTokenCandidate(asset: "ETH" | "BTC", window: string, numberValue: 
 
   if (tokenWords.some((word) => lower.includes(word))) score += 25;
   if (/(holdings?|held|treasury|crypto holdings?)/i.test(lower)) score += 20;
+  if (/(crypto holdings? are comprised|holdings? are comprised|comprised of|treasury holdings?)/i.test(lower)) score += 35;
   if (new RegExp(`${asset.toLowerCase()} holdings?`).test(lower)) score += 15;
   if (/as of/i.test(window)) score += 5;
   if (/\$|price|market cap|volume|revenue|asset value|nav|per share|share price/i.test(window)) score -= 25;
+  if (/(acquired|purchased|buys?|bought|past week|pace of buys|weekly)/i.test(window)) score -= 45;
 
   if (asset === "ETH" && numberValue >= 100_000 && numberValue < 50_000_000) score += 8;
   if (asset === "BTC" && numberValue > 0 && numberValue < 1_000_000) score += 8;
@@ -484,7 +545,7 @@ function isPlausibleTokenHolding(asset: "ETH" | "BTC", value: number, unit?: str
     return false;
   }
 
-  return value > 0 && value <= 1_000_000;
+  return value > 0 && value <= BMNR_MAX_BTC_HOLDINGS;
 }
 
 function tokenPatterns(asset: "ETH" | "BTC"): RegExp[] {
@@ -500,12 +561,11 @@ function tokenPatterns(asset: "ETH" | "BTC"): RegExp[] {
   return [
     /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:BTC|Bitcoin)(?:\s+tokens?)?/gi,
     /(?:BTC|Bitcoin)\s+holdings?[^.]{0,120}?(?:reach|reached|of|are|were|total(?:ed)?|stands?\s+at)\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?/gi,
-    /crypto\s+holdings?[^.]{0,220}?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:Bitcoin|BTC)/gi,
   ];
 }
 
-function extractTokenQuantity(asset: "ETH" | "BTC", docs: BmnrFilingDocument[]): ExtractedNumber {
-  const candidates: ExtractedNumber[] = [];
+function collectTokenCandidates(asset: "ETH" | "BTC", docs: BmnrFilingDocument[]): TokenCandidate[] {
+  const candidates: TokenCandidate[] = [];
   const patterns = tokenPatterns(asset);
 
   for (const doc of docs) {
@@ -521,50 +581,71 @@ function extractTokenQuantity(asset: "ETH" | "BTC", docs: BmnrFilingDocument[]):
         const end = Math.min(doc.text.length, match.index + match[0].length + 180);
         const window = doc.text.slice(start, end);
         const score = scoreTokenCandidate(asset, window, value) + doc.priority + 50;
+        const isApproximate = Boolean(match[2]);
 
         candidates.push({
+          asset,
           value: Math.round(value),
+          docKey: `${doc.accessionNumber}:${doc.documentUrl}`,
           metadata: buildMetadata(
             doc,
             score > doc.priority + 80 ? "high" : "medium",
             window,
-            `${asset} direct SEC holding match score ${score}`
+            `${asset} direct SEC holding match score ${score}${isApproximate ? " approximate" : " exact"}`
           ),
-          score,
+          score: score + (isApproximate ? 0 : 20),
         });
       }
     }
   }
 
-  candidates.sort((a, b) => {
-    const asOfCompare = compareDate(a.metadata.as_of_date, b.metadata.as_of_date);
+  return candidates;
+}
+
+function extractHoldings(docs: BmnrFilingDocument[]): BmnrHoldingsExtraction {
+  const ethCandidates = collectTokenCandidates("ETH", docs);
+  const btcCandidates = collectTokenCandidates("BTC", docs);
+  const pairs = ethCandidates.flatMap((eth) =>
+    btcCandidates
+      .filter(
+        (btc) =>
+          btc.docKey === eth.docKey &&
+          btc.metadata.as_of_date != null &&
+          eth.metadata.as_of_date === btc.metadata.as_of_date
+      )
+      .map((btc) => ({
+        eth,
+        btc,
+        score: eth.score + btc.score,
+        asOf: eth.metadata.as_of_date,
+        filingDate: eth.metadata.filing_date,
+      }))
+  );
+
+  pairs.sort((a, b) => {
+    const asOfCompare = compareDate(a.asOf, b.asOf);
     if (asOfCompare !== 0) return -asOfCompare;
-    const filingCompare = compareDate(a.metadata.filing_date, b.metadata.filing_date);
+    const filingCompare = compareDate(a.filingDate, b.filingDate);
     if (filingCompare !== 0) return -filingCompare;
     return b.score - a.score;
   });
 
-  const selected = candidates[0];
+  const selected = pairs[0];
   if (!selected) {
-    throw new Error(`Unable to extract ${asset} holdings from BMNR SEC filings`);
+    throw new Error("Unable to extract same-date BMNR ETH/BTC holdings pair from SEC filings");
   }
 
-  return selected;
-}
-
-function extractHoldings(docs: BmnrFilingDocument[]): BmnrHoldingsExtraction {
-  const eth = extractTokenQuantity("ETH", docs);
-  const btc = extractTokenQuantity("BTC", docs);
-  const selected =
-    compareDate(eth.metadata.as_of_date, btc.metadata.as_of_date) >= 0 ? eth.metadata : btc.metadata;
-
   return {
-    eth_qty: eth.value,
-    btc_qty: btc.value,
+    eth_qty: selected.eth.value,
+    btc_qty: selected.btc.value,
     metadata: {
-      ...selected,
-      matched_text_snippet: `ETH: ${eth.metadata.matched_text_snippet ?? ""} | BTC: ${btc.metadata.matched_text_snippet ?? ""}`.slice(0, 500),
-      reason: "Selected latest scored SEC holding candidates for ETH and BTC",
+      ...selected.eth.metadata,
+      confidence:
+        selected.eth.metadata.confidence === "high" && selected.btc.metadata.confidence === "high"
+          ? "high"
+          : "medium",
+      matched_text_snippet: `ETH: ${selected.eth.metadata.matched_text_snippet ?? ""} | BTC: ${selected.btc.metadata.matched_text_snippet ?? ""}`.slice(0, 500),
+      reason: "Selected latest same-filing, same-as-of SEC holding pair for ETH and BTC",
     },
   };
 }
@@ -595,43 +676,51 @@ function extractCashFromText(docs: BmnrFilingDocument[]): ExtractedNumber {
     return b.score - a.score;
   });
 
-  return candidates[0] ?? {
-    value: FALLBACKS.cashUsd,
-    score: 0,
-    metadata: {
-      source: "config",
-      confidence: "low",
-      matched_text_snippet: "cash fallback",
-      reason: "No SEC text cash candidate matched",
-    },
-  };
+  const selected = candidates[0];
+  if (!selected) {
+    throw new Error("Unable to extract BMNR latest text cash from SEC filings");
+  }
+
+  return selected;
 }
 
 function extractShares(docs: BmnrFilingDocument[]): BmnrSharesExtraction {
   const candidates: ExtractedNumber[] = [];
-  const sharePattern = /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+shares\s+of\s+(?:our\s+)?common\s+stock\s+outstanding(?:\s+as\s+of)?|common\s+stock\s+outstanding(?:\s+as\s+of)?[^.]{0,120}?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:\s*(million|billion|thousand))?/gi;
+  const sharePatterns = [
+    /based\s+on\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+shares\s+of\s+(?:our\s+)?common\s+stock\s+outstanding\s+as\s+of/gi,
+    /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+shares\s+of\s+(?:our\s+)?common\s+stock\s+outstanding\s+as\s+of/gi,
+    /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+shares\s+of\s+(?:our\s+)?common\s+stock\s+outstanding/gi,
+  ];
 
   for (const doc of docs) {
     if (!SEC_PROSPECTUS_FORMS.has(doc.form) && !SEC_TEXT_FORMS.has(doc.form) && !SEC_PERIODIC_FORMS.has(doc.form)) continue;
 
-    for (const match of doc.text.matchAll(sharePattern)) {
-      const raw = match[1] ?? match[3];
-      const unit = match[2] ?? match[4];
-      const value = raw ? parseMagnitude(raw, unit) : null;
-      if (value == null || value <= 0) continue;
+    for (const [patternIndex, pattern] of sharePatterns.entries()) {
+      pattern.lastIndex = 0;
 
-      const window = doc.text.slice(Math.max(0, match.index - 120), Math.min(doc.text.length, match.index + match[0].length + 160));
-      if (/authorized|offered|treasury shares|reserved|issuable|warrant|option/i.test(window)) continue;
+      for (const match of doc.text.matchAll(pattern)) {
+        const value = parseMagnitude(match[1], match[2]);
+        if (value == null || value <= 0) continue;
 
-      let score = doc.priority + 20;
-      if (/outstanding\s+as\s+of/i.test(window)) score += 30;
-      if (SEC_PROSPECTUS_FORMS.has(doc.form)) score += 10;
+        const window = doc.text.slice(Math.max(0, match.index - 160), Math.min(doc.text.length, match.index + match[0].length + 200));
+        if (
+          /authorized|shares?\s+may\s+be\s+issued|to\s+be\s+sold|sold\s+by|selling\s+stockholders|securities\s+offered|shares?\s+offered|offered\s+hereby|treasury shares|reserved|issuable|warrant|option/i.test(window)
+        ) {
+          continue;
+        }
 
-      candidates.push({
-        value: Math.round(value),
-        score,
-        metadata: buildMetadata(doc, score >= 100 ? "high" : "medium", window, "Common shares outstanding candidate"),
-      });
+        let score = doc.priority + 20;
+        if (/based\s+on/i.test(window)) score += 45;
+        if (/outstanding\s+as\s+of/i.test(window)) score += 35;
+        if (SEC_PROSPECTUS_FORMS.has(doc.form)) score += 10;
+        score += Math.max(0, 12 - patternIndex * 4);
+
+        candidates.push({
+          value: Math.round(value),
+          score,
+          metadata: buildMetadata(doc, score >= 120 ? "high" : "medium", window, "Common shares outstanding candidate"),
+        });
+      }
     }
   }
 
@@ -643,15 +732,13 @@ function extractShares(docs: BmnrFilingDocument[]): BmnrSharesExtraction {
   });
 
   const selected = candidates[0];
+  if (!selected) {
+    throw new Error("Unable to extract BMNR common shares outstanding from SEC filings");
+  }
+
   return {
-    shares_outstanding: selected?.value ?? FALLBACKS.sharesOutstanding,
-    metadata:
-      selected?.metadata ?? {
-        source: "config",
-        confidence: "low",
-        matched_text_snippet: "shares outstanding fallback",
-        reason: "No SEC shares candidate matched",
-      },
+    shares_outstanding: selected.value,
+    metadata: selected.metadata,
   };
 }
 
@@ -702,13 +789,10 @@ function extractXbrlDebt(companyFacts: SecCompanyFacts): { value: number; metada
     "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
   ]);
   const convertible = latestFact(companyFacts, ["ConvertibleNotesPayable"]);
-  const pieces = [shortTerm, current, noncurrent].filter(
+  const pieces = [shortTerm, current, noncurrent, convertible].filter(
     (item): item is { value: number; metadata: SourceMetadata } => item != null
   );
-
-  if (pieces.length === 0) {
-    return convertible;
-  }
+  if (pieces.length === 0) return null;
 
   const latestDate = pieces
     .map((piece) => piece.metadata.filing_date)
@@ -733,45 +817,100 @@ function extractXbrlDebt(companyFacts: SecCompanyFacts): { value: number; metada
         .map((piece) => piece.metadata.matched_text_snippet)
         .filter(Boolean)
         .join(" + "),
-      reason: "Summed latest current, noncurrent, and short-term XBRL debt tags",
+      reason: "Summed latest short-term, current, noncurrent, and convertible XBRL debt tags",
     },
   };
 }
 
 function extractDebtFromText(docs: BmnrFilingDocument[]): ExtractedNumber | null {
+  const candidates: ExtractedNumber[] = [];
+  const debtPattern =
+    /(?:short-term\s+borrowings|current\s+debt|long-term\s+debt|convertible\s+notes?\s+payable|outstanding\s+debt|debt\s+outstanding)\s+(?:of|total(?:ed)?|was|were|is|are|amount(?:ed)?\s+to)?\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?/gi;
+
   for (const doc of docs) {
     if (!SEC_PERIODIC_FORMS.has(doc.form)) continue;
     const noDebtMatch = doc.text.match(/(?:had|has)\s+no\s+(?:outstanding\s+)?debt\s+as\s+of|no\s+outstanding\s+debt|no\s+debt/i);
     if (noDebtMatch?.index != null) {
       const window = doc.text.slice(Math.max(0, noDebtMatch.index - 120), Math.min(doc.text.length, noDebtMatch.index + noDebtMatch[0].length + 120));
-      return {
+      candidates.push({
         value: 0,
         score: doc.priority + 50,
         metadata: buildMetadata(doc, "high", window, "SEC text explicitly says no debt"),
-      };
+      });
+    }
+
+    for (const match of doc.text.matchAll(debtPattern)) {
+      const value = parseMoney(match[1], match[2]);
+      if (value == null || value < 0) continue;
+
+      const window = doc.text.slice(Math.max(0, match.index - 120), Math.min(doc.text.length, match.index + match[0].length + 120));
+      if (/bad\s+debt|debt\s+expense|total\s+liabilities|warrant\s+liabilit|lease\s+liabilit|deferred\s+tax|asset\s+retirement/i.test(window)) continue;
+
+      candidates.push({
+        value,
+        score: doc.priority + 30,
+        metadata: buildMetadata(doc, "medium", window, "Debt amount candidate from SEC text"),
+      });
     }
   }
 
-  return null;
+  candidates.sort((a, b) => {
+    const asOfCompare = compareDate(a.metadata.as_of_date, b.metadata.as_of_date);
+    if (asOfCompare !== 0) return -asOfCompare;
+    const filingCompare = compareDate(a.metadata.filing_date, b.metadata.filing_date);
+    if (filingCompare !== 0) return -filingCompare;
+    return b.score - a.score;
+  });
+
+  return candidates[0] ?? null;
 }
 
 function extractPreferredFromText(docs: BmnrFilingDocument[]): ExtractedNumber | null {
+  const candidates: ExtractedNumber[] = [];
+  const noPreferredPattern =
+    /no\s+(?:shares\s+of\s+)?preferred\s+(?:shares|stock)\s+were\s+outstanding\s+as\s+of|no\s+preferred\s+(?:shares|stock)\s+(?:were\s+)?outstanding/i;
   const pattern = /(?:perpetual\s+preferred\s+stock|preferred\s+stock\s+notional\s+value|preferred\s+shares\s+outstanding|preferred\s+stock\s+liquidation\s+preference)[^.]{0,120}?\$?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?/gi;
 
   for (const doc of docs) {
+    if (SEC_PERIODIC_FORMS.has(doc.form)) {
+      const noPreferredMatch = doc.text.match(noPreferredPattern);
+      if (noPreferredMatch?.index != null) {
+        const window = doc.text.slice(
+          Math.max(0, noPreferredMatch.index - 120),
+          Math.min(doc.text.length, noPreferredMatch.index + noPreferredMatch[0].length + 120)
+        );
+
+        candidates.push({
+          value: 0,
+          score: doc.priority + 70,
+          metadata: buildMetadata(doc, "high", window, "SEC text explicitly says no preferred shares outstanding"),
+        });
+      }
+    }
+
     for (const match of doc.text.matchAll(pattern)) {
       const value = parseMoney(match[1], match[2]);
       if (value == null || value < 0) continue;
       const window = doc.text.slice(Math.max(0, match.index - 120), Math.min(doc.text.length, match.index + match[0].length + 120));
-      return {
+      if (/authorized|undesignated|may\s+issue|issuable|reserved/i.test(window)) continue;
+
+      candidates.push({
         value,
         score: doc.priority + 50,
         metadata: buildMetadata(doc, "medium", window, "Preferred notional candidate"),
-      };
+      });
     }
   }
 
-  return null;
+  candidates.sort((a, b) => {
+    const asOfCompare = compareDate(a.metadata.as_of_date, b.metadata.as_of_date);
+    if (asOfCompare !== 0) return -asOfCompare;
+    const filingCompare = compareDate(a.metadata.filing_date, b.metadata.filing_date);
+    if (filingCompare !== 0) return -filingCompare;
+    return b.score - a.score;
+  });
+
+  return candidates[0] ?? null;
 }
 
 async function extractBalances(docs: BmnrFilingDocument[]): Promise<BmnrBalanceExtraction> {
@@ -789,31 +928,22 @@ async function extractBalances(docs: BmnrFilingDocument[]): Promise<BmnrBalanceE
   return {
     latest_text_cash: textCash.value,
     latest_text_cash_metadata: textCash.metadata,
-    xbrl_cash: xbrlCash?.value ?? FALLBACKS.cashUsd,
-    xbrl_cash_metadata:
-      xbrlCash?.metadata ?? {
-        source: "config",
-        confidence: "low",
-        matched_text_snippet: "xbrl cash fallback",
-        reason: "No XBRL cash fact matched",
-      },
-    debt: textDebt?.value ?? xbrlDebt?.value ?? FALLBACKS.debtUsd,
+    xbrl_cash: xbrlCash?.value ?? failNumber("Unable to extract BMNR XBRL cash from SEC companyfacts"),
+    xbrl_cash_metadata: xbrlCash?.metadata ?? failMetadata("Unable to extract BMNR XBRL cash metadata"),
+    debt:
+      textDebt?.value ??
+      xbrlDebt?.value ??
+      failNumber("Unable to extract BMNR debt from SEC filings or companyfacts"),
     debt_metadata:
       textDebt?.metadata ??
-      xbrlDebt?.metadata ?? {
-        source: "config",
-        confidence: FALLBACKS.debtUsd === 0 ? "low" : "medium",
-        matched_text_snippet: "debt fallback",
-        reason: "No XBRL or text debt fact matched",
-      },
-    preferred_notional: preferred?.value ?? FALLBACKS.preferredNotionalUsd,
+      xbrlDebt?.metadata ??
+      failMetadata("Unable to extract BMNR debt metadata"),
+    preferred_notional:
+      preferred?.value ??
+      failNumber("Unable to extract BMNR preferred notional from SEC filings"),
     preferred_metadata:
-      preferred?.metadata ?? {
-        source: "config",
-        confidence: FALLBACKS.preferredNotionalUsd === 0 ? "medium" : "low",
-        matched_text_snippet: "preferred_notional fallback",
-        reason: "No preferred stock notional found in SEC filings",
-      },
+      preferred?.metadata ??
+      failMetadata("Unable to extract BMNR preferred notional metadata"),
   };
 }
 
@@ -837,7 +967,7 @@ export async function fetchBmnrMnavFromSec() {
   ]);
   const [balances, holdings] = await Promise.all([
     extractBalances(docs),
-    Promise.resolve(extractHoldings(docs)),
+    extractHoldings(docs),
   ]);
   const shares = extractShares(docs);
   const latestText = calculateBmnrMnav({
@@ -891,7 +1021,16 @@ export async function fetchBmnrMnavFromSec() {
       },
     ].filter((holding) => holding.units > 0),
     sourceAsOf,
-    sourceUrl: "https://bmnr.rocks/",
+    sourceUrl: holdings.metadata.document_url ?? SEC_SUBMISSIONS_URL,
+    dataAsOf: {
+      prices: marketData.metadata.bmnr_price.as_of_date ?? null,
+      holdings: holdings.metadata.as_of_date ?? null,
+      cash: balances.latest_text_cash_metadata.as_of_date ?? null,
+      xbrlCash: balances.xbrl_cash_metadata.as_of_date ?? null,
+      shares: shares.metadata.as_of_date ?? null,
+      debt: balances.debt_metadata.as_of_date ?? null,
+      preferred: balances.preferred_metadata.as_of_date ?? null,
+    },
     calculation: {
       latest_text_mnav: {
         ...latestText,

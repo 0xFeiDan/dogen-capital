@@ -26,6 +26,16 @@ interface StrategyMstrKpi {
 
 const STRATEGY_BITCOIN_KPIS_URL = "https://api.strategy.com/btc/bitcoinKpis";
 const STRATEGY_MSTR_KPI_URL = "https://api.strategy.com/btc/mstrKpiData";
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+type TreasuryMnavPayload = {
+  items: unknown[];
+  fetchedAt: string;
+  errors?: string[];
+};
+
+let cachedPayload: { expiresAt: number; payload: TreasuryMnavPayload } | null = null;
+let pendingPayload: Promise<TreasuryMnavPayload> | null = null;
 
 function parseNumber(value: unknown): number | undefined {
   if (typeof value === "number") {
@@ -118,13 +128,14 @@ async function fetchStrategyMnavItem() {
     ],
     sourceAsOf: mstrKpi?.timeStampUtc ?? bitcoinKpis.timestamp ?? null,
     sourceUrl: "https://www.strategy.com/",
+    dataAsOf: {
+      prices: mstrKpi?.timeStampUtc ?? bitcoinKpis.timestamp ?? null,
+      holdings: bitcoinKpis.timestamp ?? mstrKpi?.timeStampUtc ?? null,
+    },
   };
 }
 
-export async function GET() {
-  const authError = await requireAuthenticatedApiRequest();
-  if (authError) return authError;
-
+async function loadTreasuryMnavPayload(): Promise<TreasuryMnavPayload> {
   const sources = [
     { label: "MSTR", load: fetchStrategyMnavItem },
     { label: "BMNR", load: fetchBmnrMnavFromSec },
@@ -141,12 +152,46 @@ export async function GET() {
   });
 
   if (items.length > 0) {
-    return NextResponse.json({
+    return {
       items,
       fetchedAt: new Date().toISOString(),
       errors: errors.length > 0 ? errors : undefined,
-    });
+    };
   }
 
-  return upstreamError(errors.join(" / "), "Failed to fetch mNAV data");
+  throw new Error(errors.join(" / ") || "mNAV unavailable");
+}
+
+async function getCachedTreasuryMnavPayload(): Promise<TreasuryMnavPayload> {
+  const now = Date.now();
+  if (cachedPayload && cachedPayload.expiresAt > now) {
+    return cachedPayload.payload;
+  }
+
+  if (!pendingPayload) {
+    pendingPayload = loadTreasuryMnavPayload()
+      .then((payload) => {
+        cachedPayload = {
+          payload,
+          expiresAt: Date.now() + CACHE_TTL_MS,
+        };
+        return payload;
+      })
+      .finally(() => {
+        pendingPayload = null;
+      });
+  }
+
+  return pendingPayload;
+}
+
+export async function GET() {
+  const authError = await requireAuthenticatedApiRequest();
+  if (authError) return authError;
+
+  try {
+    return NextResponse.json(await getCachedTreasuryMnavPayload());
+  } catch {
+    return upstreamError("mNAV unavailable", "Failed to fetch mNAV data");
+  }
 }
