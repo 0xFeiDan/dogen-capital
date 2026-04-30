@@ -473,24 +473,63 @@ function scoreTokenCandidate(asset: "ETH" | "BTC", window: string, numberValue: 
   return score;
 }
 
-function extractTokenQuantity(asset: "ETH" | "BTC", docs: BmnrFilingDocument[], fallback: number): ExtractedNumber {
+function isPlausibleTokenHolding(asset: "ETH" | "BTC", value: number, unit?: string): boolean {
+  const normalizedUnit = unit?.toLowerCase();
+
+  if (asset === "ETH") {
+    return value >= 100_000 && value <= 50_000_000;
+  }
+
+  if (normalizedUnit === "million" || normalizedUnit === "billion") {
+    return false;
+  }
+
+  return value > 0 && value <= 1_000_000;
+}
+
+function tokenPatterns(asset: "ETH" | "BTC"): RegExp[] {
+  if (asset === "ETH") {
+    return [
+      /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:ETH|Ethereum|ether)(?:\s+tokens?)?/gi,
+      /(?:ETH|Ethereum|ether)\s+holdings?[^.]{0,120}?(?:reach|reached|of|are|were|total(?:ed)?|stands?\s+at)\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?/gi,
+      /including\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:ETH|Ethereum|ether)\s+tokens?/gi,
+      /crypto\s+holdings?[^.]{0,160}?comprised\s+of\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:ETH|Ethereum|ether)/gi,
+    ];
+  }
+
+  return [
+    /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:BTC|Bitcoin)(?:\s+tokens?)?/gi,
+    /(?:BTC|Bitcoin)\s+holdings?[^.]{0,120}?(?:reach|reached|of|are|were|total(?:ed)?|stands?\s+at)\s+(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?/gi,
+    /crypto\s+holdings?[^.]{0,220}?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(million|billion|thousand)?\s+(?:Bitcoin|BTC)/gi,
+  ];
+}
+
+function extractTokenQuantity(asset: "ETH" | "BTC", docs: BmnrFilingDocument[]): ExtractedNumber {
   const candidates: ExtractedNumber[] = [];
-  const numberPattern = /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:\s*(million|billion|thousand))?/gi;
+  const patterns = tokenPatterns(asset);
 
   for (const doc of docs) {
-    for (const match of doc.text.matchAll(numberPattern)) {
-      const value = parseMagnitude(match[1], match[2]);
-      if (value == null || value <= 0) continue;
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
 
-      const start = Math.max(0, match.index - 140);
-      const end = Math.min(doc.text.length, match.index + match[0].length + 140);
-      const window = doc.text.slice(start, end);
-      const score = scoreTokenCandidate(asset, window, value) + doc.priority + (compareDate(doc.filingDate, "1970-01-01") > 0 ? 2 : 0);
+      for (const match of doc.text.matchAll(pattern)) {
+        const value = parseMagnitude(match[1], match[2]);
+        if (value == null || value <= 0) continue;
+        if (!isPlausibleTokenHolding(asset, value, match[2])) continue;
 
-      if (score >= doc.priority + 15) {
+        const start = Math.max(0, match.index - 180);
+        const end = Math.min(doc.text.length, match.index + match[0].length + 180);
+        const window = doc.text.slice(start, end);
+        const score = scoreTokenCandidate(asset, window, value) + doc.priority + 50;
+
         candidates.push({
           value: Math.round(value),
-          metadata: buildMetadata(doc, score > doc.priority + 45 ? "high" : "medium", window, `${asset} token candidate score ${score}`),
+          metadata: buildMetadata(
+            doc,
+            score > doc.priority + 80 ? "high" : "medium",
+            window,
+            `${asset} direct SEC holding match score ${score}`
+          ),
           score,
         });
       }
@@ -505,21 +544,17 @@ function extractTokenQuantity(asset: "ETH" | "BTC", docs: BmnrFilingDocument[], 
     return b.score - a.score;
   });
 
-  return candidates[0] ?? {
-    value: fallback,
-    score: 0,
-    metadata: {
-      source: "config",
-      confidence: "low",
-      matched_text_snippet: `${asset} fallback`,
-      reason: "No SEC holding candidate matched",
-    },
-  };
+  const selected = candidates[0];
+  if (!selected) {
+    throw new Error(`Unable to extract ${asset} holdings from BMNR SEC filings`);
+  }
+
+  return selected;
 }
 
 function extractHoldings(docs: BmnrFilingDocument[]): BmnrHoldingsExtraction {
-  const eth = extractTokenQuantity("ETH", docs, FALLBACKS.ethQty);
-  const btc = extractTokenQuantity("BTC", docs, FALLBACKS.btcQty);
+  const eth = extractTokenQuantity("ETH", docs);
+  const btc = extractTokenQuantity("BTC", docs);
   const selected =
     compareDate(eth.metadata.as_of_date, btc.metadata.as_of_date) >= 0 ? eth.metadata : btc.metadata;
 
