@@ -179,6 +179,17 @@ function normalizeTokenName(token: string | null | undefined): string {
   return (token ?? "").trim().toUpperCase();
 }
 
+function normalizeHyperliquidTicker(token: string | null | undefined): string {
+  const normalized = normalizeTokenName(token);
+  const tickerMap: Record<string, string> = {
+    UBTC: "BTC",
+    UETH: "ETH",
+    USOL: "SOL",
+  };
+
+  return tickerMap[normalized] ?? normalized;
+}
+
 function isQuoteToken(token: string | null | undefined): boolean {
   return ["USDC", "USDT", "USD", "USDH", "USDE", "USDT0"].includes(
     normalizeTokenName(token)
@@ -192,7 +203,10 @@ function getNetQuantity(params: {
   feeToken?: string | null;
   baseToken: string;
 }) {
-  if (normalizeTokenName(params.feeToken) !== normalizeTokenName(params.baseToken)) {
+  if (
+    normalizeHyperliquidTicker(params.feeToken) !==
+    normalizeHyperliquidTicker(params.baseToken)
+  ) {
     return params.grossQuantity;
   }
 
@@ -254,12 +268,13 @@ function aggregateFills(
 
     const fee = Math.max(parseFiniteNumber(fill.fee) ?? 0, 0);
     const grossQuote = px * sz;
+    const baseToken = normalizeHyperliquidTicker(market.ticker);
     const netQuantity = getNetQuantity({
       side,
       grossQuantity: sz,
       fee,
       feeToken: fill.feeToken,
-      baseToken: market.ticker,
+      baseToken,
     });
     const investedAmount = getNetQuoteAmount({
       side,
@@ -317,7 +332,7 @@ export async function loadHypurrscanDcaEntries(
 
     return {
       id: makeDcaId(address, fill.externalId),
-      ticker: market?.ticker ?? fill.coin,
+      ticker: normalizeHyperliquidTicker(market?.ticker ?? fill.coin),
       side: fill.side,
       assetClass: "crypto",
       currency: "USD",
