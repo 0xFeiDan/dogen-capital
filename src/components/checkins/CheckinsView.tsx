@@ -584,7 +584,7 @@ function TaskDrawer({
       <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={cn(
-          "fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-border bg-surface-1 transition-transform duration-200 ease-in-out sm:w-[720px]",
+          "fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-border bg-surface-1 transition-transform duration-200 ease-in-out lg:w-[68vw] lg:max-w-[1320px] xl:w-[62vw] 2xl:w-[56vw]",
           open ? "translate-x-0" : "translate-x-full"
         )}
       >

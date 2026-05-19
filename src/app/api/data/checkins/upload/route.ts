@@ -4,6 +4,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { badRequest, serverError } from "@/lib/api/response";
 import { requireAuthenticatedApiRequest, validateSameOriginRequest } from "@/lib/auth/api";
+import { getCheckinUploadRoot } from "@/lib/upload-storage";
 
 export const runtime = "nodejs";
 
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
     const now = new Date();
     const folder = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "checkins", folder);
+    const uploadDir = path.join(getCheckinUploadRoot(), folder);
     const fileName = `${randomUUID()}${extension}`;
     const diskPath = path.join(uploadDir, fileName);
 
