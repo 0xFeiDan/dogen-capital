@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Brain, LayoutDashboard, TrendingUp, Wallet, X } from "lucide-react";
+import { BookOpen, Brain, CalendarCheck, LayoutDashboard, TrendingUp, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -25,6 +25,11 @@ const NAV_ITEMS = [
     label: "\u601d\u8003\u7b14\u8bb0",
     href: "/thoughts",
     icon: Brain,
+  },
+  {
+    label: "\u6bcf\u65e5\u6253\u5361",
+    href: "/checkins",
+    icon: CalendarCheck,
   },
 ] as const;
 

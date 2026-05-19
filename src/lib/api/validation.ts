@@ -1,4 +1,4 @@
-import type { Currency, DcaEntry, Thought, Trade } from "@/types";
+import type { Currency, DailyCheckinTask, DcaEntry, Thought, Trade } from "@/types";
 
 const CURRENCIES: Currency[] = ["USD", "HKD", "CNY", "EUR", "GBP", "JPY", "BTC", "ETH"];
 
@@ -130,5 +130,24 @@ export function isValidDcaLivePriceUpdate(value: unknown): value is {
     (value.quoteSymbol == null || typeof value.quoteSymbol === "string") &&
     (value.quoteCurrency == null || isCurrency(value.quoteCurrency)) &&
     (value.priceUpdatedAt == null || typeof value.priceUpdatedAt === "string")
+  );
+}
+
+export function isValidIsoDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export function isValidCheckinTask(value: unknown): value is DailyCheckinTask {
+  if (!isRecord(value)) return false;
+
+  return (
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.title) &&
+    (value.description == null || typeof value.description === "string") &&
+    (value.content == null || typeof value.content === "string") &&
+    (value.status === "pending" || value.status === "done" || value.status === "ended") &&
+    isNonEmptyString(value.createdAt) &&
+    isNonEmptyString(value.updatedAt) &&
+    (value.endedAt == null || typeof value.endedAt === "string")
   );
 }

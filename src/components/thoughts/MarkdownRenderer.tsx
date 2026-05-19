@@ -2,7 +2,48 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { CSSProperties } from "react";
 import type { Components } from "react-markdown";
+
+function parseImageAlt(rawAlt = "") {
+  const parts = rawAlt.split("|").map((part) => part.trim()).filter(Boolean);
+  const [label = "", ...tokens] = parts;
+  const style: CSSProperties = {};
+
+  function setDimension(key: "width" | "height", value: string) {
+    if (/^\d{1,4}$/.test(value)) {
+      style[key] = `${Math.min(Number(value), 1600)}px`;
+    } else if (/^\d{1,3}%$/.test(value)) {
+      const percent = Math.max(1, Math.min(Number(value.slice(0, -1)), 100));
+      style[key] = `${percent}%`;
+    }
+  }
+
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    const percent = lower.match(/^(\d{1,3})%$/);
+    const width = lower.match(/^w(?:idth)?=(\d{1,4}|\d{1,3}%)$/);
+    const height = lower.match(/^h(?:eight)?=(\d{1,4}|\d{1,3}%)$/);
+    const box = lower.match(/^(\d{1,4})x(\d{1,4})$/);
+
+    if (percent) setDimension("width", `${percent[1]}%`);
+    if (width) setDimension("width", width[1]);
+    if (height) setDimension("height", height[1]);
+    if (box) {
+      setDimension("width", box[1]);
+      setDimension("height", box[2]);
+    }
+  }
+
+  if (style.width || style.height) {
+    style.objectFit = "contain";
+  }
+
+  return {
+    alt: label || rawAlt,
+    style,
+  };
+}
 
 // ─── Custom component map ─────────────────────────────────────────────────────
 
@@ -77,15 +118,20 @@ const components: Components = {
       {children}
     </a>
   ),
-  img: ({ src, alt }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src ?? ""}
-      alt={alt ?? ""}
-      className="my-3 h-auto max-w-full rounded-lg border border-border"
-      loading="lazy"
-    />
-  ),
+  img: ({ src, alt }) => {
+    const parsed = parseImageAlt(alt ?? "");
+
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src ?? ""}
+        alt={parsed.alt}
+        className="my-3 h-auto max-w-full rounded-lg border border-border"
+        loading="lazy"
+        style={parsed.style}
+      />
+    );
+  },
   hr: () => <hr className="border-border my-5" />,
   table: ({ children }) => (
     <div className="overflow-x-auto mb-3">

@@ -16,6 +16,7 @@ export type AssetClass =
   | "other";
 export type Currency = "USD" | "HKD" | "CNY" | "EUR" | "GBP" | "JPY" | "BTC" | "ETH";
 export type DcaEntrySource = "hyperliquid";
+export type CheckinTaskStatus = "pending" | "done" | "ended";
 export type ThoughtCategory =
   | "macro"
   | "sector"
@@ -100,6 +101,21 @@ export interface DcaSyncSetting {
   provider: DcaEntrySource;
   address: string;
   lastSyncedAt?: string;
+}
+
+export interface DailyCheckinTask {
+  id: string;
+  title: string;
+  description?: string;
+  content?: string;
+  status: CheckinTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  checkedToday?: boolean;
+  todayCheckedAt?: string;
+  lastCheckedAt?: string;
+  checkCount?: number;
 }
 
 export type DcaValuationStatus = "ready" | "missing-price" | "currency-mismatch";

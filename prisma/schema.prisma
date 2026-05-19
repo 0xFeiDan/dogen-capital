@@ -16,6 +16,8 @@ model Profile {
   thoughts ThoughtRecord[]
   dcaEntries DcaRecord[]
   dcaSyncSettings DcaSyncSetting[]
+  checkinTasks CheckinTaskItem[]
+  checkinTaskChecks CheckinTaskDailyCheck[]
   setting  PortfolioSetting?
 }
 
@@ -114,4 +116,41 @@ model DcaSyncSetting {
   profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@id([profileId, provider])
+}
+
+model LoginRateLimit {
+  clientKey    String @id
+  count        Int
+  windowStart  Int
+  blockedUntil Int
+}
+
+model CheckinTaskItem {
+  id        String   @id
+  profileId String
+  title     String
+  content   String
+  status    String
+  createdAt String
+  updatedAt String
+  endedAt   String?
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  checks    CheckinTaskDailyCheck[]
+
+  @@index([profileId, status])
+  @@index([profileId, updatedAt])
+}
+
+model CheckinTaskDailyCheck {
+  id        String   @id
+  profileId String
+  taskId    String
+  date      String
+  checkedAt String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  task      CheckinTaskItem @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, date])
+  @@index([profileId, date])
+  @@index([taskId, date])
 }
