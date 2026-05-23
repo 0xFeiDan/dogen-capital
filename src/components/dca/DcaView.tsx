@@ -25,6 +25,7 @@ const PAGE_BLURB =
 const ADD_ENTRY_TEXT = "\u65b0\u589e\u4e70\u5165";
 const ADD_SELL_TEXT = "\u8bb0\u5f55\u5356\u51fa";
 const SEARCH_PLACEHOLDER = "\u641c\u7d22\u4ee3\u7801\u3001\u540d\u79f0\u3001\u5907\u6ce8";
+const RECORD_SEARCH_PLACEHOLDER = "\u641c\u7d22\u5b9a\u6295\u6d41\u6c34\u4ee3\u7801\u3001\u540d\u79f0\u3001\u5907\u6ce8";
 const FILTER_ALL = "\u5168\u90e8";
 const FILTER_STOCK = "\u80a1\u7968";
 const FILTER_CRYPTO = "\u865a\u62df\u8d27\u5e01";
@@ -219,6 +220,7 @@ export function DcaView() {
   const replaceDcaEntriesByUser = useDcaEntries((state) => state.replaceAllDcaEntriesByUser);
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all");
   const [search, setSearch] = useState("");
+  const [recordSearch, setRecordSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<DcaEntry | null>(null);
   const [draftValues, setDraftValues] = useState<DcaFormState | null>(null);
@@ -235,6 +237,7 @@ export function DcaView() {
   const [hyperliquidSyncMessage, setHyperliquidSyncMessage] = useState("");
 
   const normalizedQuery = search.trim().toLowerCase();
+  const normalizedRecordQuery = recordSearch.trim().toLowerCase();
   const { positions: allPositionSummaries, computedEntries } = useMemo(
     () => buildDcaPositionSummaries(entries),
     [entries]
@@ -245,8 +248,8 @@ export function DcaView() {
   );
   const filteredEntries = useMemo(
     () =>
-      computedEntries.filter((entry) => matchesEntryFilter(entry, assetFilter, normalizedQuery)),
-    [assetFilter, computedEntries, normalizedQuery]
+      computedEntries.filter((entry) => matchesEntryFilter(entry, assetFilter, normalizedRecordQuery)),
+    [assetFilter, computedEntries, normalizedRecordQuery]
   );
   const filteredActivePositions = useMemo(
     () =>
@@ -783,8 +786,21 @@ export function DcaView() {
 
             <Card noPadding className="overflow-hidden">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="text-sm font-semibold text-text-primary">{RECORDS_TITLE}</h2>
-                <p className="mt-1 text-xs text-text-muted">{RECORDS_SUB}</p>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-text-primary">{RECORDS_TITLE}</h2>
+                    <p className="mt-1 text-xs text-text-muted">{RECORDS_SUB}</p>
+                  </div>
+                  <div className="relative w-full lg:max-w-sm">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                    <input
+                      value={recordSearch}
+                      onChange={(event) => setRecordSearch(event.target.value)}
+                      placeholder={RECORD_SEARCH_PLACEHOLDER}
+                      className="h-9 w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 text-sm text-text-primary outline-none transition-colors hover:border-border-strong focus:border-accent/40 focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
