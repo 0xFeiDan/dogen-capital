@@ -7,10 +7,8 @@ import {
 } from "@/lib/auth/api";
 import {
   getCryptoQuoteCurrency,
-  isSupportedQuoteCurrency,
   type DcaMarketQuote,
 } from "@/lib/dca-pricing";
-import type { Currency } from "@/types";
 
 interface BinanceBookTickerPayload {
   symbol: string;
@@ -35,26 +33,9 @@ interface BitgetTickersResponse {
   data?: BitgetTickerPayload[];
 }
 
-interface TwelveDataQuotePayload {
-  symbol?: string;
-  currency?: string;
-  exchange?: string;
-  mic_code?: string;
-  close?: string | number | null;
-  previous_close?: string | number | null;
-  extended_price?: string | number | null;
-  status?: string;
-  message?: string;
-  code?: number;
-}
-
-const TWELVE_DATA_API_URL = "https://api.twelvedata.com/quote";
 const BINANCE_BOOK_TICKER_URL = "https://api.binance.com/api/v3/ticker/bookTicker";
+const BINANCE_USDM_BOOK_TICKER_URL = "https://fapi.binance.com/fapi/v1/ticker/bookTicker";
 const BITGET_SPOT_TICKERS_URL = "https://api.bitget.com/api/v2/spot/market/tickers";
-const TWELVE_DATA_CACHE_SECONDS = Math.max(
-  15,
-  Number(process.env.TWELVEDATA_CACHE_SECONDS ?? 60)
-);
 
 function sanitizeSymbols(symbols?: string[], pattern = /[^A-Z0-9]/g): string[] {
   if (!Array.isArray(symbols)) return [];
@@ -69,7 +50,7 @@ function sanitizeSymbols(symbols?: string[], pattern = /[^A-Z0-9]/g): string[] {
 }
 
 function sanitizeStockSymbols(symbols?: string[]): string[] {
-  return sanitizeSymbols(symbols, /[^A-Z0-9.^=-]/g);
+  return sanitizeSymbols(symbols);
 }
 
 function parsePositivePrice(...values: Array<string | number | null | undefined>): number {
@@ -118,14 +99,6 @@ function parseBitgetQuote(payload: BitgetTickerPayload): DcaMarketQuote | null {
       ? new Date(Number(payload.ts)).toISOString()
       : new Date().toISOString(),
   };
-}
-
-function parseTwelveDataPrice(payload: TwelveDataQuotePayload): number {
-  return parsePositivePrice(
-    payload.extended_price,
-    payload.close,
-    payload.previous_close
-  );
 }
 
 async function fetchBinanceCryptoQuotesBatch(symbols: string[]): Promise<DcaMarketQuote[]> {
@@ -211,52 +184,37 @@ async function fetchCryptoQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
   ];
 }
 
-async function fetchStockQuote(symbol: string): Promise<DcaMarketQuote | null> {
-  const apiKey = process.env.TWELVEDATA_API_KEY;
-  if (!apiKey) return null;
-
-  const url = new URL(TWELVE_DATA_API_URL);
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("apikey", apiKey);
-  url.searchParams.set("interval", "1min");
-
-  const response = await fetch(url, {
-    next: { revalidate: TWELVE_DATA_CACHE_SECONDS },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const payload = (await response.json()) as TwelveDataQuotePayload;
-  if (payload.status === "error") {
-    return null;
-  }
-
-  const price = parseTwelveDataPrice(payload);
-  const currency = String(payload.currency ?? "USD").toUpperCase();
-
-  if (!Number.isFinite(price) || price <= 0 || !isSupportedQuoteCurrency(currency)) {
-    return null;
-  }
-
-  const quote: DcaMarketQuote = {
-    assetClass: "stock",
-    symbol: (payload.symbol ?? symbol).toUpperCase(),
-    price,
-    currency: currency as Currency,
-    source: "twelvedata",
-    fetchedAt: new Date().toISOString(),
-  };
-
-  return quote;
-}
-
 async function fetchStockQuotes(symbols: string[]): Promise<DcaMarketQuote[]> {
   if (symbols.length === 0) return [];
 
-  const responses = await Promise.all(symbols.map((symbol) => fetchStockQuote(symbol)));
-  return responses.filter((quote): quote is DcaMarketQuote => quote != null);
+  const response = await fetch(BINANCE_USDM_BOOK_TICKER_URL, {
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+
+  const payloads = (await response.json()) as BinanceBookTickerPayload[];
+  if (!Array.isArray(payloads)) return [];
+
+  const requestedSymbols = new Set(symbols);
+  const fetchedAt = new Date().toISOString();
+
+  return payloads.flatMap((payload) => {
+    const symbol = payload.symbol?.trim().toUpperCase();
+    const price = parsePositivePrice(payload.bidPrice, payload.askPrice);
+
+    if (!symbol || !requestedSymbols.has(symbol) || !Number.isFinite(price) || price <= 0) {
+      return [];
+    }
+
+    return [{
+      assetClass: "stock" as const,
+      symbol,
+      price,
+      currency: "USD" as const,
+      source: "binance" as const,
+      fetchedAt,
+    }];
+  });
 }
 
 export async function POST(request: Request) {

@@ -702,7 +702,7 @@ function TaskDrawer({
                   value={task.title}
                   onChange={(event) => onTaskChange({ ...task, title: event.target.value })}
                   className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-text-primary outline-none focus:border-accent"
-                  placeholder="例如：检查 BMNR mNAV 数据源"
+                  placeholder="例如：检查 MSTR mNAV 数据源"
                 />
               </label>
               <div className="flex items-center justify-between gap-3">

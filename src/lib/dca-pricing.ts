@@ -1,6 +1,6 @@
 import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
 
-export type DcaQuoteSource = "binance" | "bitget" | "twelvedata";
+export type DcaQuoteSource = "binance" | "bitget";
 
 export interface DcaMarketQuote {
   assetClass: DcaAssetClass;
@@ -45,8 +45,10 @@ function normalizeCryptoSymbol(ticker: string, currency: Currency): string | nul
 }
 
 function normalizeStockSymbol(ticker: string): string | null {
-  const cleaned = ticker.trim().toUpperCase().replace(/[^A-Z0-9.^=-]/g, "");
-  return cleaned || null;
+  const cleaned = ticker.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!cleaned) return null;
+
+  return cleaned.endsWith("USDT") ? cleaned : `${cleaned}USDT`;
 }
 
 export function getDcaQuoteSymbol(entry: Pick<DcaEntry, "ticker" | "assetClass" | "currency">) {

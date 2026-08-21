@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { upstreamError } from "@/lib/api/response";
 import { requireAuthenticatedApiRequest } from "@/lib/auth/api";
-import { fetchBmnrMnavFromSec } from "@/lib/bmnr-mnav";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +28,8 @@ const STRATEGY_MSTR_KPI_URL = "https://api.strategy.com/btc/mstrKpiData";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 type TreasuryMnavPayload = {
-  items: unknown[];
+  items: Awaited<ReturnType<typeof fetchStrategyMnavItem>>[];
   fetchedAt: string;
-  errors?: string[];
 };
 
 let cachedPayload: { expiresAt: number; payload: TreasuryMnavPayload } | null = null;
@@ -136,30 +134,12 @@ async function fetchStrategyMnavItem() {
 }
 
 async function loadTreasuryMnavPayload(): Promise<TreasuryMnavPayload> {
-  const sources = [
-    { label: "MSTR", load: fetchStrategyMnavItem },
-    { label: "BMNR", load: fetchBmnrMnavFromSec },
-  ] as const;
-  const results = await Promise.allSettled(sources.map((source) => source.load()));
-  const items = results.flatMap((result) =>
-    result.status === "fulfilled" ? [result.value] : []
-  );
-  const errors = results.flatMap((result, index) => {
-    if (result.status === "fulfilled") return [];
+  const mstr = await fetchStrategyMnavItem();
 
-    console.error(`Failed to fetch ${sources[index].label} mNAV`, result.reason);
-    return [`${sources[index].label}: unavailable`];
-  });
-
-  if (items.length > 0) {
-    return {
-      items,
-      fetchedAt: new Date().toISOString(),
-      errors: errors.length > 0 ? errors : undefined,
-    };
-  }
-
-  throw new Error(errors.join(" / ") || "mNAV unavailable");
+  return {
+    items: [mstr],
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 async function getCachedTreasuryMnavPayload(): Promise<TreasuryMnavPayload> {

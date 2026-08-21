@@ -17,12 +17,11 @@ Dogen Capital 是一个面向个人交易者的交易日志与复盘系统。它
 - 净值曲线
 - 资产分布
 - 月度盈亏
-- MSTR / BMNR mNAV 监控
+- MSTR mNAV 监控
 
 mNAV 数据来源：
 
 - MSTR：Strategy 官网公开接口 `https://api.strategy.com/btc/bitcoinKpis` 与 `https://api.strategy.com/btc/mstrKpiData`，mNAV 使用官网企业价值 `entVal` / BTC NAV 口径
-- BMNR：BMNR Treasury Dashboard 官网接口 `https://api.bmnr.rocks/api/treasury/daily-snapshots`
 
 ### 2. 交易日志
 
@@ -206,20 +205,17 @@ mNAV 数据来源：
 
 实时价格来源：
 
-- 虚拟货币：Binance 买一价
-- 美股：Twelve Data Quote API
+- 虚拟货币：Binance 现货买一价，Bitget 作为备用
+- 股票：Binance USD-M 股票永续合约买一价，自动将股票代码转换为对应的 `USDT` 合约
 
-美股实时价格需要在服务端环境变量中配置：
-
-- `TWELVEDATA_API_KEY`
-- `TWELVEDATA_CACHE_SECONDS`，可选，默认 60 秒，避免频繁刷新消耗 API 额度
-
-股票代码按 Twelve Data 的 symbol 输入，例如：
+股票代码填写原始代码，系统会自动请求对应合约，例如：
 
 - `META`
 - `NVDA`
 - `TSLA`
-- `CRCL`
+- `CRCL` → `CRCLUSDT`
+
+只有币安已上架对应股票永续合约的代码才会自动更新价格；未上架的股票会保留已有价格，不会改写成错误报价。
 
 ## 导入与导出
 
@@ -299,8 +295,6 @@ npm install
 - `AUTH_PASSWORD_HASH`
 - `AUTH_SESSION_SECRET`
 - `AUTH_SESSION_TTL_SECONDS`
-- `TWELVEDATA_API_KEY`，用于定投页美股实时价格，可选但推荐填写
-- `TWELVEDATA_CACHE_SECONDS`，可选，默认 60 秒
 
 示例内容见 [`.env.example`](C:\Users\Administrator\Desktop\dogen\.env.example)。
 
