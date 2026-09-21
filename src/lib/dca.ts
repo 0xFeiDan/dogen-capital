@@ -34,6 +34,7 @@ export interface DcaPositionSummary {
   averageCost: number;
   marketValue?: number;
   unrealizedPnl?: number;
+  unrealizedPnlPercent?: number;
   valuationStatus: DcaValuationStatus;
   realisedPnl: number;
   entriesCount: number;
@@ -224,6 +225,10 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
       valuationStatus === "ready" && marketValue != null
         ? marketValue - normalizedCostBasis
         : undefined;
+    const unrealizedPnlPercent =
+      unrealizedPnl != null && normalizedCostBasis > 0
+        ? (unrealizedPnl / normalizedCostBasis) * 100
+        : undefined;
 
     positions.push({
       key,
@@ -242,6 +247,7 @@ export function buildDcaPositionSummaries(entries: DcaEntry[]): {
       averageCost: roundPrice(averageCost),
       marketValue: marketValue != null ? roundMoney(marketValue) : undefined,
       unrealizedPnl: unrealizedPnl != null ? roundMoney(unrealizedPnl) : undefined,
+      unrealizedPnlPercent,
       valuationStatus,
       realisedPnl: roundMoney(realisedPnl),
       entriesCount: sortedEntries.length,

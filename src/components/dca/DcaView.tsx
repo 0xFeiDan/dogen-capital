@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, RefreshCw, Search, Trash2, Wallet } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
@@ -11,7 +21,14 @@ import {
   fetchHyperliquidDcaSyncSetting,
   syncHyperliquidDcaEntriesOnServer,
 } from "@/lib/server-sync-client";
-import { cn, formatCurrency, formatDate, formatPrice } from "@/lib/utils";
+import {
+  cn,
+  formatCurrency,
+  formatDate,
+  formatPercent,
+  formatPrice,
+  getPnlClass,
+} from "@/lib/utils";
 import { useAppUsers } from "@/store/useAppUsers";
 import { useDcaEntries } from "@/store/useDcaEntries";
 import type { Currency, DcaAssetClass, DcaEntry } from "@/types";
@@ -19,6 +36,7 @@ import { DcaDrawer } from "./DcaDrawer";
 import { dcaToForm, type DcaFormState } from "./DcaForm";
 
 type AssetFilter = "all" | DcaAssetClass;
+type SortDir = "asc" | "desc";
 
 const PAGE_BLURB =
   "\u5b9a\u6295\u9875\u73b0\u5728\u540c\u65f6\u8bb0\u5f55\u4e70\u5165\u548c\u5356\u51fa\u6d41\u6c34\uff0c\u5356\u51fa\u91d1\u989d\u4f1a\u4f18\u5148\u51b2\u51cf\u672c\u91d1\uff0c\u8d85\u51fa\u5269\u4f59\u672c\u91d1\u7684\u90e8\u5206\u624d\u8ba1\u5165\u5df2\u5b9e\u73b0\u76c8\u4e8f\u3002";
@@ -55,6 +73,8 @@ const RECORD_FILTER_EMPTY_TEXT = "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6c
 const NO_PRICE_TEXT = "\u7b49\u5f85\u884c\u60c5";
 const VALUE_UNAVAILABLE_TEXT = "--";
 const VALUE_CURRENCY_MISMATCH_TEXT = "\u5e01\u79cd\u4e0d\u4e00\u81f4";
+const PRINCIPAL_RECOVERED_TEXT = "\u672c\u91d1\u5df2\u6536\u56de";
+const PROFIT_RATE_SORT_TITLE = "\u70b9\u51fb\u5207\u6362\uff1a\u5229\u6da6\u7387\u4ece\u9ad8\u5230\u4f4e \u2192 \u4ece\u4f4e\u5230\u9ad8 \u2192 \u9ed8\u8ba4\u987a\u5e8f";
 const POSITION_COL_TICKER = "\u6807\u7684";
 const POSITION_COL_CLASS = "\u677f\u5757";
 const POSITION_COL_COST = "\u5269\u4f59\u672c\u91d1";
@@ -63,6 +83,7 @@ const POSITION_COL_AVG_COST = "\u6301\u4ed3\u5747\u4ef7";
 const POSITION_COL_PRICE = "\u5f53\u524d\u4ef7";
 const POSITION_COL_VALUE = "\u5f53\u524d\u5e02\u503c";
 const POSITION_COL_FLOATING = "\u6d6e\u52a8\u76c8\u4e8f";
+const POSITION_COL_PROFIT_RATE = "\u5229\u6da6\u7387";
 const POSITION_COL_REALISED = "\u5df2\u5b9e\u73b0";
 const POSITION_COL_COUNT = "\u8bb0\u5f55\u6570";
 const POSITION_COL_LAST = "\u6700\u8fd1\u4e00\u6b21";
@@ -193,6 +214,22 @@ function matchesPositionFilter(position: DcaPositionSummary, filter: AssetFilter
   );
 }
 
+function sortPositionsByProfitRate(positions: DcaPositionSummary[], dir: SortDir) {
+  const multiplier = dir === "asc" ? 1 : -1;
+
+  // Positions without a rate (no quote, currency mismatch, principal recovered) always sink to the bottom.
+  return [...positions].sort((a, b) => {
+    const aRate = a.unrealizedPnlPercent;
+    const bRate = b.unrealizedPnlPercent;
+
+    if (aRate == null || bRate == null) {
+      return (aRate == null ? 1 : 0) - (bRate == null ? 1 : 0);
+    }
+
+    return multiplier * (aRate - bRate);
+  });
+}
+
 function MetricCard({
   label,
   value,
@@ -221,6 +258,7 @@ export function DcaView() {
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all");
   const [search, setSearch] = useState("");
   const [recordSearch, setRecordSearch] = useState("");
+  const [profitRateSort, setProfitRateSort] = useState<SortDir | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<DcaEntry | null>(null);
   const [draftValues, setDraftValues] = useState<DcaFormState | null>(null);
@@ -255,6 +293,13 @@ export function DcaView() {
     () =>
       activePositions.filter((position) => matchesPositionFilter(position, assetFilter, normalizedQuery)),
     [activePositions, assetFilter, normalizedQuery]
+  );
+  const sortedActivePositions = useMemo(
+    () =>
+      profitRateSort
+        ? sortPositionsByProfitRate(filteredActivePositions, profitRateSort)
+        : filteredActivePositions,
+    [filteredActivePositions, profitRateSort]
   );
   const filteredPositionSummaries = useMemo(
     () =>
@@ -366,6 +411,12 @@ export function DcaView() {
       cancelled = true;
     };
   }, [activeUserId]);
+
+  function handleProfitRateSort() {
+    setProfitRateSort((current) =>
+      current === null ? "desc" : current === "desc" ? "asc" : null
+    );
+  }
 
   function handleNewBuy() {
     setEditingEntry(null);
@@ -665,20 +716,40 @@ export function DcaView() {
                       <th className="px-4 py-3 text-center font-medium">{POSITION_COL_PRICE}</th>
                       <th className="px-4 py-3 text-center font-medium">{POSITION_COL_VALUE}</th>
                       <th className="px-4 py-3 text-center font-medium">{POSITION_COL_FLOATING}</th>
+                      <th className="px-4 py-3 text-center font-medium">
+                        <button
+                          type="button"
+                          onClick={handleProfitRateSort}
+                          title={PROFIT_RATE_SORT_TITLE}
+                          className={cn(
+                            "inline-flex items-center justify-center gap-1 transition-colors hover:text-text-secondary",
+                            profitRateSort && "text-text-secondary"
+                          )}
+                        >
+                          {POSITION_COL_PROFIT_RATE}
+                          {profitRateSort === "desc" ? (
+                            <ChevronDown className="h-3 w-3" />
+                          ) : profitRateSort === "asc" ? (
+                            <ChevronUp className="h-3 w-3" />
+                          ) : (
+                            <ChevronsUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-center font-medium">{POSITION_COL_REALISED}</th>
                       <th className="px-4 py-3 text-center font-medium">{POSITION_COL_COUNT}</th>
                       <th className="px-5 py-3 text-center font-medium">{POSITION_COL_LAST}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredActivePositions.length === 0 ? (
+                    {sortedActivePositions.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="px-5 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={12} className="px-5 py-8 text-center text-sm text-text-muted">
                           {FILTER_EMPTY_TEXT}
                         </td>
                       </tr>
                     ) : (
-                      filteredActivePositions.map((position) => (
+                      sortedActivePositions.map((position) => (
                         <tr key={position.key} className="border-t border-border/70">
                           <td className="px-5 py-4 text-center">
                             <div className="flex flex-col items-center">
@@ -758,6 +829,18 @@ export function DcaView() {
                             ) : (
                               getValuationText(position)
                             )}
+                          </td>
+                          <td
+                            className={cn(
+                              "px-4 py-4 text-center font-medium tabular-nums",
+                              getPnlClass(position.unrealizedPnlPercent ?? 0)
+                            )}
+                          >
+                            {position.unrealizedPnlPercent != null
+                              ? formatPercent(position.unrealizedPnlPercent)
+                              : position.remainingCostBasis > 0
+                                ? getValuationText(position)
+                                : PRINCIPAL_RECOVERED_TEXT}
                           </td>
                           <td
                             className={cn(
